@@ -1,0 +1,21 @@
+output_root: {{ xstrm.output_root }}
+state_file: {{ project.install_root }}/data/strm-sync-state.json
+mode: {{ xstrm.mode }}
+alist:
+  base_url: {{ alist.addr }}
+  token: {{ alist.token }}
+  public_url: {{ alist.public_addr }}
+scan:
+  default_depth: 1
+  incremental_only: {{ xstrm.incremental_only_yaml }}
+  include_ext:
+    - .mp4
+    - .mkv
+    - .avi
+    - .ts
+    - .m2ts
+sources:
+{{ xstrm.sources_yaml }}
+emby2alist:
+  media_mount_path:
+{{ mount.media_mount_path_yaml }}

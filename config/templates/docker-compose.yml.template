@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  xstrm-nginx:
+    image: nginx:stable
+    container_name: xstrm-nginx
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - {{ project.install_root }}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - {{ project.install_root }}/nginx/conf.d:/etc/nginx/conf.d:ro
+      - {{ project.install_root }}/nginx/sites-enabled:/etc/nginx/sites-enabled:ro
+      - {{ project.install_root }}/nginx/conf.d/includes:/opt/xstrm-suite/nginx/conf.d/includes:ro
+      - {{ project.install_root }}/data/nginx-log:/var/log/nginx
+      - {{ project.install_root }}/data/nginx-cache:/var/cache/nginx
+{{ docker.cert_mount_block }}

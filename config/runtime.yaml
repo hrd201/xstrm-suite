@@ -1,0 +1,39 @@
+project:
+  name: xstrm-suite
+  install_root: /opt/xstrm-suite
+
+emby:
+  host: http://YOUR_EMBY_HOST:8096
+  api_key: YOUR_EMBY_API_KEY
+
+alist:
+  scheme: http
+  host: 172.17.0.1
+  port: 5388
+  token: YOUR_ALIST_TOKEN
+  public_addr: http://your-domain.example.com:5388
+  sign_enable: false
+  sign_expire_time: 12
+
+nginx:
+  server_name: _
+  http_port: 8095
+  https_enabled: false
+  https_port: 8443
+  ssl_cert: ""
+  ssl_key: ""
+  backend_scheme: http
+  backend_port: 8095
+
+mount:
+  media_mount_path:
+    - /mnt
+
+xstrm:
+  output_root: /emby-strm
+  mode: mirror
+  incremental_only: true
+  sources:
+    - /115/电影
+    - /115/剧集
+    - /115/动画

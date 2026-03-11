@@ -1,0 +1,35 @@
+output_root: /emby-strm
+state_file: /opt/xstrm-suite/data/strm-sync-state.json
+mode: mirror
+alist:
+  base_url: http://YOUR_ALIST_HOST:5388
+  token: YOUR_ALIST_TOKEN
+  public_url: http://your-domain.example.com:5388
+scan:
+  default_depth: 1
+  incremental_only: true
+  include_ext:
+    - .mp4
+    - .mkv
+    - .avi
+    - .ts
+    - .m2ts
+sources:
+- path: /115/电影
+  library_type: movie
+  watch_depth: 1
+  output_prefix: /115/电影
+  scan_path: /mnt/115/电影
+- path: /115/剧集
+  library_type: series
+  watch_depth: 1
+  output_prefix: /115/剧集
+  scan_path: /mnt/115/剧集
+- path: /115/动画
+  library_type: series
+  watch_depth: 1
+  output_prefix: /115/动画
+  scan_path: /mnt/115/动画
+emby2alist:
+  media_mount_path:
+    - /mnt
