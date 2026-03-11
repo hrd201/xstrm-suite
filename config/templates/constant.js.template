@@ -1,0 +1,9 @@
+const embyHost = "{{ emby.host }}";
+const embyApiKey = "{{ emby.api_key }}";
+const mediaMountPath = [{{ mount.media_mount_path_quoted }}];
+
+export default {
+  embyHost,
+  embyApiKey,
+  mediaMountPath,
+}

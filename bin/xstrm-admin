@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+show_menu() {
+  cat <<'EOF'
+
+XSTRM-ADMIN 菜单
+1. 运行 xstrm
+2. 安装 / 一键部署（bootstrap）
+3. 升级 / 同步当前项目到 /opt/xstrm-suite
+4. 修复安装（repair）
+5. 卸载（uninstall）
+6. nginx 配置校验（test）
+7. nginx 重载（reload）
+8. Docker 启动 nginx/emby2alist
+9. Docker 停止 nginx/emby2alist
+10. Docker 查看状态
+11. 重新渲染并应用配置
+12. 查看 HTTP/HTTPS 切换说明
+13. 查看部署说明
+14. 查看当前配置
+0. 退出
+EOF
+}
+
+while true; do
+  show_menu
+  read -rp '请输入选项: ' choice
+  case "$choice" in
+    1) exec "$BASE_DIR/bin/xstrm" ;;
+    2) exec "$BASE_DIR/scripts/bootstrap.sh" ;;
+    3) exec "$BASE_DIR/scripts/upgrade.sh" ;;
+    4) exec "$BASE_DIR/scripts/repair.sh" ;;
+    5) exec "$BASE_DIR/scripts/uninstall.sh" ;;
+    6) exec "$BASE_DIR/scripts/nginx_ctl.sh" test ;;
+    7) exec "$BASE_DIR/scripts/nginx_ctl.sh" reload ;;
+    8) exec "$BASE_DIR/scripts/docker_ctl.sh" up ;;
+    9) exec "$BASE_DIR/scripts/docker_ctl.sh" down ;;
+    10) exec "$BASE_DIR/scripts/docker_ctl.sh" status ;;
+    11) python3 "$BASE_DIR/scripts/render_runtime.py" && python3 "$BASE_DIR/scripts/apply_runtime.py" && "$BASE_DIR/scripts/docker_ctl.sh" restart ;;
+    12) cat "$BASE_DIR/docs/HTTP_HTTPS_SWITCH.md" ;;
+    13) cat "$BASE_DIR/docs/BOOTSTRAP_USAGE.md" ;;
+    14) cat "$BASE_DIR/config/runtime.yaml" ;;
+    0) exit 0 ;;
+    *) echo '无效选项' ;;
+  esac
+done

@@ -1,0 +1,14 @@
+server {
+    listen {{ nginx.https_port }} ssl;
+    server_name {{ nginx.server_name }};
+
+    ssl_certificate {{ nginx.ssl_cert }};
+    ssl_certificate_key {{ nginx.ssl_key }};
+
+    client_max_body_size 0;
+
+    location / {
+        proxy_pass {{ nginx.backend_scheme }}://127.0.0.1:{{ nginx.backend_port }};
+        include {{ project.install_root }}/nginx/conf.d/includes/proxy-header.conf;
+    }
+}

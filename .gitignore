@@ -1,0 +1,22 @@
+# runtime
+*.log
+logs/
+log/
+cache/
+embyCache/
+*.bak
+*.runtime
+nginx-log/
+nginx-cache/
+
+# xstrm state
+/data/*.json
+!/data/.gitkeep
+
+# python
+__pycache__/
+*.pyc
+
+# env
+.env
+.env.*

@@ -1,0 +1,23 @@
+const alistAddr = "{{ alist.addr }}";
+const alistToken = "{{ alist.token }}";
+const alistSignEnable = {{ alist.sign_enable_js }};
+const alistSignExpireTime = {{ alist.sign_expire_time }};
+const alistPublicAddr = "{{ alist.public_addr }}";
+
+const clientSelfAlistRule = [
+  [2, strHead["115"], alistPublicAddr],
+];
+
+const redirectCheckEnable = false;
+const fallbackUseOriginal = true;
+
+export default {
+  alistAddr,
+  alistToken,
+  alistSignEnable,
+  alistSignExpireTime,
+  alistPublicAddr,
+  clientSelfAlistRule,
+  redirectCheckEnable,
+  fallbackUseOriginal,
+}
