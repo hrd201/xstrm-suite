@@ -33,3 +33,6 @@ sources:
 emby2alist:
   media_mount_path:
   - /mnt
+  profile_root: /root/emby2Alist/nginx
+strm_mode: auto
+resolved_strm_mode: local_path
