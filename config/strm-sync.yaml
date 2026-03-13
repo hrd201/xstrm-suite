@@ -9,11 +9,11 @@ scan:
   default_depth: 1
   incremental_only: true
   include_ext:
-    - .mp4
-    - .mkv
-    - .avi
-    - .ts
-    - .m2ts
+  - .mp4
+  - .mkv
+  - .avi
+  - .ts
+  - .m2ts
 sources:
 - path: /115/电影
   library_type: movie
@@ -32,4 +32,4 @@ sources:
   scan_path: /mnt/115/动画
 emby2alist:
   media_mount_path:
-    - /mnt
+  - /mnt
