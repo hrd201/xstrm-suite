@@ -10,6 +10,7 @@ CONFIG_PATH = BASE_DIR / 'config' / 'strm-sync.yaml'
 STATE_PATH = BASE_DIR / 'data' / 'strm-sync-state.json'
 EMBY2ALIST_CONSTANT = BASE_DIR / 'emby2alist' / 'conf.d' / 'constant.js'
 EMBY2ALIST_MOUNT_CONFIG = BASE_DIR / 'emby2alist' / 'conf.d' / 'config' / 'constant-mount.js'
+DEFAULT_NGINX_PROFILE_ROOT = BASE_DIR / 'emby2alist'
 MEDIA_EXTS = {'.mp4', '.mkv', '.avi', '.ts', '.m2ts', '.mov', '.wmv', '.flv'}
 
 
@@ -57,6 +58,8 @@ def infer_emby2alist_settings() -> dict:
         'alistAddr': None,
         'alistToken': None,
         'alistPublicAddr': None,
+        'preferredStrmMode': 'logical_path',
+        'profileRoot': str(DEFAULT_NGINX_PROFILE_ROOT),
     }
     if EMBY2ALIST_CONSTANT.exists():
         text = EMBY2ALIST_CONSTANT.read_text(encoding='utf-8')
@@ -66,6 +69,13 @@ def infer_emby2alist_settings() -> dict:
         result['alistAddr'] = parse_js_string(text, 'alistAddr')
         result['alistToken'] = parse_js_string(text, 'alistToken')
         result['alistPublicAddr'] = parse_js_string(text, 'alistPublicAddr')
+    pro_path = DEFAULT_NGINX_PROFILE_ROOT / 'conf.d' / 'config' / 'constant-pro.js'
+    if pro_path.exists():
+        pro_text = pro_path.read_text(encoding='utf-8')
+        if '"/115/"' in pro_text and '/emby-strm/115/' in pro_text:
+            result['preferredStrmMode'] = 'logical_path'
+        elif result['mediaMountPath']:
+            result['preferredStrmMode'] = 'local_path'
     return result
 
 
@@ -73,6 +83,7 @@ def ensure_integrated_config(config: dict) -> dict:
     config.setdefault('output_root', '/emby-strm')
     config.setdefault('state_file', str(STATE_PATH))
     config.setdefault('mode', 'mirror')
+    config.setdefault('strm_mode', 'auto')
     config.setdefault('scan', {})
     config['scan'].setdefault('incremental_only', True)
     config['scan'].setdefault('include_ext', sorted(MEDIA_EXTS))
@@ -83,6 +94,12 @@ def ensure_integrated_config(config: dict) -> dict:
     emby2alist = config['emby2alist']
     if not emby2alist.get('media_mount_path'):
         emby2alist['media_mount_path'] = inferred.get('mediaMountPath', [])
+    if not emby2alist.get('profile_root'):
+        emby2alist['profile_root'] = inferred.get('profileRoot')
+    if config.get('strm_mode') == 'auto':
+        config['resolved_strm_mode'] = inferred.get('preferredStrmMode', 'logical_path')
+    else:
+        config['resolved_strm_mode'] = config.get('strm_mode', 'logical_path')
 
     if not config['alist'].get('base_url') and inferred.get('alistAddr'):
         config['alist']['base_url'] = inferred['alistAddr']
@@ -149,8 +166,11 @@ def show_state():
 def show_integration(config: dict):
     print('emby2alist 同源配置：')
     print(json.dumps({
+        'profile_root': config.get('emby2alist', {}).get('profile_root'),
         'media_mount_path': config.get('emby2alist', {}).get('media_mount_path', []),
         'alist': config.get('alist', {}),
+        'strm_mode': config.get('strm_mode'),
+        'resolved_strm_mode': config.get('resolved_strm_mode'),
         'sources': config.get('sources', []),
     }, ensure_ascii=False, indent=2))
 
@@ -160,10 +180,17 @@ def normalize_output_path(output_root: str, media_path: str) -> Path:
     return Path(output_root) / Path(relative).with_suffix('.strm')
 
 
-def generate_one(output_root: str, media_path: str, target_path: str | None = None) -> Path:
+def resolve_strm_target(config: dict, media_path: str, full_path: str) -> str:
+    mode = config.get('resolved_strm_mode', config.get('strm_mode', 'logical_path'))
+    if mode == 'local_path':
+        return full_path
+    return media_path
+
+
+def generate_one(output_root: str, media_path: str, target_path: str) -> Path:
     out = normalize_output_path(output_root, media_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(target_path or media_path, encoding='utf-8')
+    out.write_text(target_path, encoding='utf-8')
     print(f'已生成: {out}')
     return out
 
@@ -239,7 +266,8 @@ def run_source(config: dict, src: dict):
         if incremental_only and media_path in existing_state:
             skipped_state_only += 1
             continue
-        generate_one(output_root, media_path, full_path)
+        target_path = resolve_strm_target(config, media_path, full_path)
+        generate_one(output_root, media_path, target_path)
         generated.append(media_path)
     record_generated(state, source_key, generated)
     save_state(state)
@@ -378,12 +406,19 @@ def parse_args():
     parser.add_argument('--scan-all', action='store_true', help='扫描配置中的全部源')
     parser.add_argument('--scan-path', help='扫描指定目录，可填 scan_path 或 output_prefix')
     parser.add_argument('--status-json', action='store_true', help='输出状态文件 JSON')
+    parser.add_argument('--strm-mode', choices=['auto', 'logical_path', 'local_path'], help='本次运行覆盖 strm 输出模式')
+    parser.add_argument('--profile-root', help='指定 emby2alist/nginx 根目录（应包含 conf.d/）')
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     config = ensure_integrated_config(load_simple_yaml(CONFIG_PATH))
+    if args.strm_mode:
+        config['strm_mode'] = args.strm_mode
+        config['resolved_strm_mode'] = args.strm_mode if args.strm_mode != 'auto' else config.get('resolved_strm_mode', 'logical_path')
+    if args.profile_root:
+        config.setdefault('emby2alist', {})['profile_root'] = args.profile_root
     save_yaml(CONFIG_PATH, config)
 
     if args.status_json:
