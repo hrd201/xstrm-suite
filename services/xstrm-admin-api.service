@@ -1,0 +1,13 @@
+[Unit]
+Description=XSTRM Admin API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/xstrm-suite
+ExecStart=/usr/bin/python3 /opt/xstrm-suite/scripts/admin_api.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
