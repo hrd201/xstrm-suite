@@ -37,6 +37,9 @@ POST /api/admin/xstrm/rebuild
 后续可把 `/api/admin/xstrm/` 反代到：
 - `http://127.0.0.1:18095`
 
+并将静态页面挂到：
+- `/admin/xstrm/` → `web/admin/`
+
 ## 当前安全边界
 
 第一版仅监听 `127.0.0.1`，适合：
