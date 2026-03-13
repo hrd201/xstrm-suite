@@ -85,6 +85,18 @@
     </div>
 
     <div class="card">
+      <h2>管理密码</h2>
+      <p class="muted">用于保护 `/admin/xstrm/` 和 `/api/admin/xstrm/` 的 Basic Auth。当前用户名固定为 <code>admin</code>。</p>
+      <div class="two-col" style="margin-bottom:10px;">
+        <input id="newPasswordInput" type="password" placeholder="输入新密码（至少 8 位）" />
+        <input id="confirmPasswordInput" type="password" placeholder="再次输入新密码" />
+      </div>
+      <div class="actions">
+        <button id="changePasswordBtn" class="secondary">更新管理密码</button>
+      </div>
+    </div>
+
+    <div class="card">
       <div class="toolbar">
         <h2>最近日志</h2>
         <div class="actions">
@@ -109,6 +121,9 @@
     const pathHistoryEl = document.getElementById('pathHistory');
     const autoRefreshSelect = document.getElementById('autoRefreshSelect');
     const toastEl = document.getElementById('toast');
+    const newPasswordInput = document.getElementById('newPasswordInput');
+    const confirmPasswordInput = document.getElementById('confirmPasswordInput');
+    const changePasswordBtn = document.getElementById('changePasswordBtn');
 
     let refreshTimer = null;
     const PATH_HISTORY_KEY = 'xstrm.admin.pathHistory';
@@ -125,7 +140,7 @@
     }
 
     function setButtonsDisabled(disabled) {
-      [refreshBtn, logBtn, scanBtn, rebuildBtn, scanPathBtn].forEach(btn => btn.disabled = disabled);
+      [refreshBtn, logBtn, scanBtn, rebuildBtn, scanPathBtn, changePasswordBtn].forEach(btn => btn.disabled = disabled);
     }
 
     function renderStatus(data) {
@@ -249,6 +264,28 @@
       const path = pathInput.value.trim();
       if (!path) return showToast('请先输入目录', 'bad');
       runAction('/api/admin/xstrm/scan-path', {path}, null, '已触发指定目录扫描');
+    };
+    changePasswordBtn.onclick = async () => {
+      const password = newPasswordInput.value.trim();
+      const confirm = confirmPasswordInput.value.trim();
+      if (!password) return showToast('请输入新密码', 'bad');
+      if (password.length < 8) return showToast('新密码至少 8 位', 'bad');
+      if (password !== confirm) return showToast('两次输入的密码不一致', 'bad');
+      setButtonsDisabled(true);
+      try {
+        const data = await fetchJson('/api/admin/xstrm/change-password', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({password, confirm})
+        });
+        newPasswordInput.value = '';
+        confirmPasswordInput.value = '';
+        showToast(data.message || '密码已更新', 'ok');
+      } catch (e) {
+        showToast('修改密码失败：' + e.message, 'bad');
+      } finally {
+        setButtonsDisabled(false);
+      }
     };
 
     autoRefreshSelect.onchange = () => setAutoRefresh(Number(autoRefreshSelect.value));
