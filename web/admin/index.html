@@ -109,6 +109,7 @@
         <button id="refreshSettingsBtn" class="secondary">读取 nginx 配置</button>
         <button id="saveSettingsBtn">保存生成配置</button>
       </div>
+      <div id="settingsSummary" class="grid" style="margin-bottom:12px;"></div>
       <pre id="settingsBox" style="min-height:120px; max-height:260px;">加载中...</pre>
     </div>
 
@@ -170,6 +171,7 @@
     const refreshSettingsBtn = document.getElementById('refreshSettingsBtn');
     const saveSettingsBtn = document.getElementById('saveSettingsBtn');
     const settingsBox = document.getElementById('settingsBox');
+    const settingsSummaryEl = document.getElementById('settingsSummary');
     const newPasswordInput = document.getElementById('newPasswordInput');
     const confirmPasswordInput = document.getElementById('confirmPasswordInput');
     const changePasswordBtn = document.getElementById('changePasswordBtn');
@@ -230,12 +232,28 @@
       return data;
     }
 
+    function renderSettingsSummary(s, profile, profileError) {
+      const mountPaths = Array.isArray(profile?.mediaMountPath) ? profile.mediaMountPath : [];
+      const sourcePreview = Array.isArray(s?.derived_sources) && s.derived_sources.length
+        ? s.derived_sources.map(item => item.output_prefix || item.scan_path).join(' / ')
+        : '未推导到默认扫描源';
+      settingsSummaryEl.innerHTML = `
+        <div class="card kv"><strong>当前读取到的 nginx profile</strong><br>${escapeHtml(profile?.source_root || s?.profile_root || '-')}</div>
+        <div class="card kv"><strong>当前推导出的 strm 模式</strong><br>${escapeHtml(s?.resolved_strm_mode || '-')}</div>
+        <div class="card kv"><strong>预期生成示例</strong><br>${escapeHtml(s?.expected_target_example || '-')}</div>
+        <div class="card kv"><strong>挂载根</strong><br>${escapeHtml(mountPaths.join(' / ') || '-')}</div>
+        <div class="card kv" style="grid-column:1/-1;"><strong>默认扫描源推导预览</strong><br>${escapeHtml(sourcePreview)}</div>
+        ${profileError ? `<div class="card kv bad" style="grid-column:1/-1;"><strong>profile 读取错误</strong><br>${escapeHtml(profileError)}</div>` : ''}
+      `;
+    }
+
     async function loadSettings() {
       const data = await fetchJson('/api/admin/xstrm/settings');
       const s = data.settings || {};
       profileRootInput.value = s.profile_root || '/root/emby2Alist/nginx';
       strmModeSelect.value = s.strm_mode || 'auto';
       outputRootInput.value = s.output_root || '/emby-strm';
+      renderSettingsSummary(s, data.profile, data.profile_error || null);
       settingsBox.textContent = JSON.stringify({
         settings: s,
         profile: data.profile,
@@ -256,6 +274,7 @@
             output_root: outputRootInput.value.trim() || '/emby-strm'
           })
         });
+        renderSettingsSummary(data.settings || {}, data.profile, data.profile_error || null);
         settingsBox.textContent = JSON.stringify({
           settings: data.settings,
           profile: data.profile,

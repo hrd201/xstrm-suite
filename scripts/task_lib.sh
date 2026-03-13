@@ -73,7 +73,10 @@ for line in p.read_text(encoding='utf-8', errors='ignore').splitlines()[::-1]:
     if line.startswith('{') and line.endswith('}'):
         try:
             data = json.loads(line)
+            resolved_mode = data.get('resolved_strm_mode')
             summary = f"发现 {data.get('found', 0)} 个，新增 {data.get('generated', 0)} 个，跳过已存在文件 {data.get('skipped_existing_file', 0)} 个，状态跳过 {data.get('skipped_state_only', 0)} 个"
+            if resolved_mode:
+                summary += f"，resolved_strm_mode={resolved_mode}"
             break
         except Exception:
             pass

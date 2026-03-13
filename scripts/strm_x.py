@@ -60,6 +60,7 @@ def infer_emby2alist_settings() -> dict:
         'alistPublicAddr': None,
         'preferredStrmMode': 'logical_path',
         'profileRoot': str(DEFAULT_NGINX_PROFILE_ROOT),
+        'defaultSources': [],
     }
     if EMBY2ALIST_CONSTANT.exists():
         text = EMBY2ALIST_CONSTANT.read_text(encoding='utf-8')
@@ -69,6 +70,7 @@ def infer_emby2alist_settings() -> dict:
         result['alistAddr'] = parse_js_string(text, 'alistAddr')
         result['alistToken'] = parse_js_string(text, 'alistToken')
         result['alistPublicAddr'] = parse_js_string(text, 'alistPublicAddr')
+    result['defaultSources'] = infer_default_sources_from_mounts(result['mediaMountPath'])
     pro_path = DEFAULT_NGINX_PROFILE_ROOT / 'conf.d' / 'config' / 'constant-pro.js'
     if pro_path.exists():
         pro_text = pro_path.read_text(encoding='utf-8')
@@ -78,6 +80,47 @@ def infer_emby2alist_settings() -> dict:
             result['preferredStrmMode'] = 'local_path'
     return result
 
+
+
+
+def infer_library_type(output_prefix: str) -> str:
+    normalized = output_prefix.lower()
+    if any(token in normalized for token in ('电影', 'movie', 'movies', 'film', 'films')):
+        return 'movie'
+    return 'series'
+
+
+def infer_default_sources_from_mounts(media_mount_paths: list) -> list:
+    discovered = []
+    seen = set()
+    for mount in media_mount_paths:
+        if not mount:
+            continue
+        mount_root = Path(mount)
+        if not mount_root.exists():
+            continue
+        for storage in sorted([p for p in mount_root.iterdir() if p.is_dir()]):
+            for category in sorted([p for p in storage.iterdir() if p.is_dir()]):
+                output_prefix = f'/{storage.name}/{category.name}'
+                if output_prefix in seen:
+                    continue
+                seen.add(output_prefix)
+                discovered.append({
+                    'output_prefix': output_prefix,
+                    'scan_path': str(category),
+                    'library_type': infer_library_type(output_prefix),
+                    'watch_depth': 1,
+                })
+    return discovered
+
+
+def build_example_target(config: dict) -> str:
+    mode = config.get('resolved_strm_mode', config.get('strm_mode', 'logical_path'))
+    mount_paths = config.get('emby2alist', {}).get('media_mount_path', [])
+    base = '/115/示例/样片.mkv'
+    if mode == 'local_path' and mount_paths:
+        return f"{mount_paths[0].rstrip('/')}" + base
+    return base
 
 def ensure_integrated_config(config: dict) -> dict:
     config.setdefault('output_root', '/emby-strm')
@@ -110,13 +153,12 @@ def ensure_integrated_config(config: dict) -> dict:
 
     sources = config.setdefault('sources', [])
     if not sources:
-        sources.extend([
-            {'output_prefix': '/115/电影', 'library_type': 'movie', 'watch_depth': 1},
-            {'output_prefix': '/115/剧集', 'library_type': 'series', 'watch_depth': 1},
-            {'output_prefix': '/115/动画', 'library_type': 'series', 'watch_depth': 1},
-        ])
+        sources.extend(inferred.get('defaultSources', []))
 
     for src in sources:
+        if not src.get('library_type'):
+            src['library_type'] = infer_library_type(src.get('output_prefix', src.get('scan_path', '')))
+        src.setdefault('watch_depth', 1)
         normalize_source(src, emby2alist.get('media_mount_path', []))
     return config
 
@@ -172,6 +214,7 @@ def show_integration(config: dict):
         'strm_mode': config.get('strm_mode'),
         'resolved_strm_mode': config.get('resolved_strm_mode'),
         'sources': config.get('sources', []),
+        'expected_target_example': build_example_target(config),
     }, ensure_ascii=False, indent=2))
 
 
@@ -237,13 +280,16 @@ def run_source(config: dict, src: dict):
     scan_path = src['scan_path']
     output_prefix = src['output_prefix']
     source_key = output_prefix
+    resolved_mode = config.get('resolved_strm_mode', config.get('strm_mode', 'logical_path'))
     print(f'扫描源目录: {scan_path}')
     print(f'STRM 输出前缀: {output_prefix}')
+    print(f'本次 resolved_strm_mode: {resolved_mode}')
     if not Path(scan_path).exists():
         print(f'跳过不存在的扫描目录: {scan_path}')
         return {
             'scan_path': scan_path,
             'output_prefix': output_prefix,
+            'resolved_strm_mode': resolved_mode,
             'found': 0,
             'generated': 0,
             'skipped_existing_file': 0,
@@ -274,6 +320,7 @@ def run_source(config: dict, src: dict):
     summary = {
         'scan_path': scan_path,
         'output_prefix': output_prefix,
+        'resolved_strm_mode': resolved_mode,
         'found': total_found,
         'generated': len(generated),
         'skipped_existing_file': skipped_existing_file,
@@ -366,6 +413,7 @@ def run_all_sources(config: dict):
         'skipped_existing_file': 0,
         'skipped_state_only': 0,
         'missing_sources': 0,
+        'resolved_strm_mode': config.get('resolved_strm_mode', config.get('strm_mode', 'logical_path')),
         'items': [],
     }
     for src in config.get('sources', []):
