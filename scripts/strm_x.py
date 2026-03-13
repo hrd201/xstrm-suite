@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import json
 import re
 import sys
@@ -231,7 +232,16 @@ def run_source(config: dict, src: dict):
         generated.append(media_path)
     record_generated(state, source_key, generated)
     save_state(state)
-    print(f'统计: 发现 {total_found} 个，新增 {len(generated)} 个，跳过已存在文件 {skipped_existing_file} 个，状态跳过 {skipped_state_only} 个')
+    summary = {
+        'scan_path': scan_path,
+        'output_prefix': output_prefix,
+        'found': total_found,
+        'generated': len(generated),
+        'skipped_existing_file': skipped_existing_file,
+        'skipped_state_only': skipped_state_only,
+    }
+    print(f"统计: 发现 {total_found} 个，新增 {len(generated)} 个，跳过已存在文件 {skipped_existing_file} 个，状态跳过 {skipped_state_only} 个")
+    return summary
 
 
 def discover_sources(config: dict):
@@ -297,24 +307,7 @@ def scan_specified_dir(config: dict):
     if not source_input:
         print('已取消')
         return
-    src = find_matching_source(config, source_input)
-    if not src:
-        if source_input.startswith('/mnt/'):
-            mount_paths = config.get('emby2alist', {}).get('media_mount_path', [])
-            output_prefix = source_input
-            for mount in mount_paths:
-                prefix = mount.rstrip('/') + '/'
-                if source_input.startswith(prefix):
-                    output_prefix = '/' + source_input[len(prefix):]
-                    break
-            src = {'scan_path': source_input, 'output_prefix': output_prefix, 'library_type': 'custom', 'watch_depth': 1}
-        else:
-            mount_paths = config.get('emby2alist', {}).get('media_mount_path', [])
-            scan_path = source_input
-            for mount in mount_paths:
-                scan_path = mount.rstrip('/') + source_input
-                break
-            src = {'scan_path': scan_path, 'output_prefix': source_input, 'library_type': 'custom', 'watch_depth': 1}
+    src = build_source_from_input(config, source_input)
     print('当前使用 emby2alist 同源整合模式：扫描挂载目录，输出去挂载前缀后的媒体路径。')
     run_source(config, src)
 
@@ -326,9 +319,76 @@ def cron_menu():
     print('当前版本已支持：先发现两层目录，再按编号选择扫描。')
 
 
+def run_all_sources(config: dict):
+    totals = {
+        'sources': 0,
+        'found': 0,
+        'generated': 0,
+        'skipped_existing_file': 0,
+        'skipped_state_only': 0,
+        'items': [],
+    }
+    for src in config.get('sources', []):
+        summary = run_source(config, src)
+        totals['sources'] += 1
+        totals['found'] += summary['found']
+        totals['generated'] += summary['generated']
+        totals['skipped_existing_file'] += summary['skipped_existing_file']
+        totals['skipped_state_only'] += summary['skipped_state_only']
+        totals['items'].append(summary)
+    return totals
+
+
+def build_source_from_input(config: dict, source_input: str):
+    src = find_matching_source(config, source_input)
+    if src:
+        return src
+    if source_input.startswith('/mnt/'):
+        mount_paths = config.get('emby2alist', {}).get('media_mount_path', [])
+        output_prefix = source_input
+        for mount in mount_paths:
+            prefix = mount.rstrip('/') + '/'
+            if source_input.startswith(prefix):
+                output_prefix = '/' + source_input[len(prefix):]
+                break
+        return {'scan_path': source_input, 'output_prefix': output_prefix, 'library_type': 'custom', 'watch_depth': 1}
+    mount_paths = config.get('emby2alist', {}).get('media_mount_path', [])
+    scan_path = source_input
+    for mount in mount_paths:
+        scan_path = mount.rstrip('/') + source_input
+        break
+    return {'scan_path': scan_path, 'output_prefix': source_input, 'library_type': 'custom', 'watch_depth': 1}
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='xstrm scanner')
+    parser.add_argument('--scan-all', action='store_true', help='扫描配置中的全部源')
+    parser.add_argument('--scan-path', help='扫描指定目录，可填 scan_path 或 output_prefix')
+    parser.add_argument('--status-json', action='store_true', help='输出状态文件 JSON')
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
     config = ensure_integrated_config(load_simple_yaml(CONFIG_PATH))
     save_yaml(CONFIG_PATH, config)
+
+    if args.status_json:
+        print(json.dumps(load_state(), ensure_ascii=False, indent=2))
+        return
+
+    if args.scan_all:
+        result = run_all_sources(config)
+        print(json.dumps({'mode': 'scan_all', **result}, ensure_ascii=False))
+        return
+
+    if args.scan_path:
+        print('当前使用 emby2alist 同源整合模式：扫描挂载目录，输出去挂载前缀后的媒体路径。')
+        src = build_source_from_input(config, args.scan_path.strip())
+        result = run_source(config, src)
+        print(json.dumps({'mode': 'scan_path', **result}, ensure_ascii=False))
+        return
+
     while True:
         print_main_menu()
         choice = input('请输入选项: ').strip()
