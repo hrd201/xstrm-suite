@@ -98,6 +98,21 @@
 
     <div class="card">
       <div class="toolbar">
+        <h2>同步源列表</h2>
+        <div class="actions">
+          <button id="refreshSourcesBtn" class="secondary">刷新</button>
+          <button id="saveSourcesBtn" class="primary">保存配置</button>
+        </div>
+      </div>
+      <p class="muted">配置要扫描的目录列表。不在列表中的目录不会被扫描。</p>
+      <div id="sourcesList"></div>
+      <div class="actions" style="margin-top:10px;">
+        <button id="addSourceBtn" class="secondary">+ 添加源</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
         <h2>最近日志</h2>
         <div class="actions">
           <button id="logBtn" class="secondary">刷新日志</button>
@@ -124,6 +139,11 @@
     const newPasswordInput = document.getElementById('newPasswordInput');
     const confirmPasswordInput = document.getElementById('confirmPasswordInput');
     const changePasswordBtn = document.getElementById('changePasswordBtn');
+    const sourcesListEl = document.getElementById('sourcesList');
+    const refreshSourcesBtn = document.getElementById('refreshSourcesBtn');
+    const saveSourcesBtn = document.getElementById('saveSourcesBtn');
+    const addSourceBtn = document.getElementById('addSourceBtn');
+    let sourcesData = [];
 
     let refreshTimer = null;
     const PATH_HISTORY_KEY = 'xstrm.admin.pathHistory';
@@ -140,7 +160,7 @@
     }
 
     function setButtonsDisabled(disabled) {
-      [refreshBtn, logBtn, scanBtn, rebuildBtn, scanPathBtn, changePasswordBtn].forEach(btn => btn.disabled = disabled);
+      [refreshBtn, logBtn, scanBtn, rebuildBtn, scanPathBtn, changePasswordBtn, refreshSourcesBtn, saveSourcesBtn, addSourceBtn].forEach(btn => btn && (btn.disabled = disabled));
     }
 
     function renderStatus(data) {
@@ -175,6 +195,64 @@
       logBox.textContent = data.content || '(暂无日志)';
       return data;
     }
+
+    async function loadSources() {
+      const data = await fetchJson('/api/admin/xstrm/sources');
+      sourcesData = data.sources || [];
+      renderSources();
+      return data;
+    }
+
+    async function saveSources() {
+      setButtonsDisabled(true);
+      try {
+        const data = await fetchJson('/api/admin/xstrm/sources', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({sources: sourcesData})
+        });
+        showToast(data.message || '已保存', 'ok');
+      } catch (e) {
+        showToast('保存失败：' + e.message, 'bad');
+      } finally {
+        setButtonsDisabled(false);
+      }
+    }
+
+    function renderSources() {
+      if (!sourcesData.length) {
+        sourcesListEl.innerHTML = '<p class="muted">暂无同步源配置</p>';
+        return;
+      }
+      sourcesListEl.innerHTML = sourcesData.map((src, idx) => `
+        <div style="background:#1f2937;padding:10px;border-radius:8px;margin-bottom:8px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div><label class="muted" style="font-size:12px;">扫描目录</label><input value="${escapeHtml(src.scan_path||'')}" data-idx="${idx}" data-field="scan_path" class="source-input" placeholder="/mnt/115/电影"></div>
+            <div><label class="muted" style="font-size:12px;">输出前缀</label><input value="${escapeHtml(src.output_prefix||'')}" data-idx="${idx}" data-field="output_prefix" class="source-input" placeholder="/115/电影"></div>
+          </div>
+          <button onclick="removeSource(${idx})" class="danger" style="margin-top:6px;padding:4px 10px;font-size:12px;">删除</button>
+        </div>
+      `).join('');
+      sourcesListEl.querySelectorAll('.source-input').forEach(inp => {
+        inp.addEventListener('input', e => {
+          const idx = parseInt(e.target.dataset.idx);
+          const field = e.target.dataset.field;
+          sourcesData[idx][field] = e.target.value;
+        });
+      });
+    }
+
+    window.removeSource = function(idx) {
+      sourcesData.splice(idx, 1);
+      renderSources();
+    };
+
+    addSourceBtn.onclick = () => {
+      sourcesData.push({scan_path: '/mnt/115/', output_prefix: '/115/'});
+      renderSources();
+    };
+    refreshSourcesBtn.onclick = () => loadSources();
+    saveSourcesBtn.onclick = () => saveSources();
 
     function getPathHistory() {
       try { return JSON.parse(localStorage.getItem(PATH_HISTORY_KEY) || '[]'); }
@@ -291,7 +369,7 @@
     autoRefreshSelect.onchange = () => setAutoRefresh(Number(autoRefreshSelect.value));
 
     renderPathHistory();
-    Promise.all([loadStatus(), loadLogs()]).then(() => {
+    Promise.all([loadStatus(), loadLogs(), loadSources()]).then(() => {
       setAutoRefresh(Number(autoRefreshSelect.value));
     }).catch(err => {
       statusEl.innerHTML = '<div class="bad">状态加载失败：' + escapeHtml(err.message) + '</div>';

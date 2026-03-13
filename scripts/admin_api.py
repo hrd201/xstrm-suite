@@ -75,6 +75,11 @@ class Handler(BaseHTTPRequestHandler):
             if log_file and Path(log_file).exists():
                 content = Path(log_file).read_text(encoding='utf-8', errors='ignore')[-12000:]
             return self._json(200, {'ok': True, 'log_file': log_file, 'content': content})
+        if parsed.path == '/api/admin/xstrm/sources':
+            import yaml
+            cfg_path = BASE_DIR / 'config' / 'strm-sync.yaml'
+            cfg = yaml.safe_load(cfg_path.read_text(encoding='utf-8'))
+            return self._json(200, {'ok': True, 'sources': cfg.get('sources', [])})
         return self._json(404, {'ok': False, 'error': 'not found'})
 
     def do_POST(self):
@@ -128,6 +133,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {'ok': False, 'error': '两次输入的密码不一致'})
             ok, message = update_basic_auth_password(password)
             return self._json(200 if ok else 500, {'ok': ok, 'message': message})
+
+        if parsed.path == '/api/admin/xstrm/sources':
+            import yaml
+            new_sources = data.get('sources', [])
+            cfg_path = BASE_DIR / 'config' / 'strm-sync.yaml'
+            cfg = yaml.safe_load(cfg_path.read_text(encoding='utf-8'))
+            cfg['sources'] = new_sources
+            cfg_path.write_text(yaml.dump(cfg, allow_unicode=True, default_flow_style=False), encoding='utf-8')
+            return self._json(200, {'ok': True, 'message': '同步源列表已更新', 'sources': new_sources})
 
         return self._json(404, {'ok': False, 'error': 'not found'})
 
