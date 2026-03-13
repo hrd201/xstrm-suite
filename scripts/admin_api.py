@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlparse
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = BASE_DIR / 'scripts'
+WEB_DIR = BASE_DIR / 'web' / 'admin'
 CONFIG_PATH = BASE_DIR / 'config' / 'strm-sync.yaml'
 HTPASSWD_PATH = BASE_DIR / 'nginx' / 'conf.d' / '.htpasswd-xstrm-admin'
 HOST = '127.0.0.1'
@@ -92,11 +93,29 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _html(self, code: int, html: str):
+        body = html.encode('utf-8')
+        self.send_response(code)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def log_message(self, fmt, *args):
         return
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path in ('/admin/xstrm', '/admin/xstrm/'):
+            index = WEB_DIR / 'index.html'
+            if not index.exists():
+                return self._html(404, 'xstrm admin index.html not found')
+            return self._html(200, index.read_text(encoding='utf-8'))
+        if parsed.path == '/admin/xstrm/index.html':
+            index = WEB_DIR / 'index.html'
+            if not index.exists():
+                return self._html(404, 'xstrm admin index.html not found')
+            return self._html(200, index.read_text(encoding='utf-8'))
         if parsed.path == '/api/admin/xstrm/status':
             code, out, err = run_cmd(TASKS['status'])
             if code == 0:
