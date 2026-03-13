@@ -160,10 +160,10 @@ def normalize_output_path(output_root: str, media_path: str) -> Path:
     return Path(output_root) / Path(relative).with_suffix('.strm')
 
 
-def generate_one(output_root: str, media_path: str) -> Path:
+def generate_one(output_root: str, media_path: str, target_path: str | None = None) -> Path:
     out = normalize_output_path(output_root, media_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(media_path, encoding='utf-8')
+    out.write_text(target_path or media_path, encoding='utf-8')
     print(f'已生成: {out}')
     return out
 
@@ -212,6 +212,17 @@ def run_source(config: dict, src: dict):
     source_key = output_prefix
     print(f'扫描源目录: {scan_path}')
     print(f'STRM 输出前缀: {output_prefix}')
+    if not Path(scan_path).exists():
+        print(f'跳过不存在的扫描目录: {scan_path}')
+        return {
+            'scan_path': scan_path,
+            'output_prefix': output_prefix,
+            'found': 0,
+            'generated': 0,
+            'skipped_existing_file': 0,
+            'skipped_state_only': 0,
+            'missing_source': True,
+        }
     files = walk_local(scan_path)
     total_found = len(files)
     print(f'发现媒体文件 {total_found} 个')
@@ -228,7 +239,7 @@ def run_source(config: dict, src: dict):
         if incremental_only and media_path in existing_state:
             skipped_state_only += 1
             continue
-        generate_one(output_root, media_path)
+        generate_one(output_root, media_path, full_path)
         generated.append(media_path)
     record_generated(state, source_key, generated)
     save_state(state)
@@ -326,6 +337,7 @@ def run_all_sources(config: dict):
         'generated': 0,
         'skipped_existing_file': 0,
         'skipped_state_only': 0,
+        'missing_sources': 0,
         'items': [],
     }
     for src in config.get('sources', []):
@@ -335,6 +347,7 @@ def run_all_sources(config: dict):
         totals['generated'] += summary['generated']
         totals['skipped_existing_file'] += summary['skipped_existing_file']
         totals['skipped_state_only'] += summary['skipped_state_only']
+        totals['missing_sources'] += 1 if summary.get('missing_source') else 0
         totals['items'].append(summary)
     return totals
 

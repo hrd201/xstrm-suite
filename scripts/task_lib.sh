@@ -31,12 +31,22 @@ status_write() {
   python3 - <<PY
 import json
 from pathlib import Path
+
+def parse_value(v):
+    if v == 'true':
+        return True
+    if v == 'false':
+        return False
+    if v == 'null':
+        return None
+    return v
+
 path = Path(${STATUS_FILE@Q})
 path.parent.mkdir(parents=True, exist_ok=True)
 data = {
   "task": ${task_name@Q},
-  "running": ${running},
-  "success": ${success},
+  "running": parse_value(${running@Q}),
+  "success": parse_value(${success@Q}),
   "message": ${message@Q},
   "log_file": ${log_file@Q},
   "started_at": ${started_at@Q},
