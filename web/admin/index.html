@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>xstrm Admin</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font-family: system-ui, sans-serif; margin: 0; background: #0b1220; color: #e5e7eb; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 24px; }
+    .card { background: #111827; border: 1px solid #374151; border-radius: 14px; padding: 18px; margin-bottom: 16px; }
+    h1,h2 { margin: 0 0 12px; }
+    .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .kv { font-size: 14px; line-height: 1.7; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    button { background: #2563eb; color: white; border: 0; border-radius: 10px; padding: 10px 14px; cursor: pointer; font-size: 14px; }
+    button.secondary { background: #374151; }
+    button.danger { background: #dc2626; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    input { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; border: 1px solid #4b5563; background: #0f172a; color: #e5e7eb; }
+    pre { white-space: pre-wrap; word-break: break-word; background: #020617; border-radius: 10px; padding: 12px; min-height: 180px; max-height: 420px; overflow: auto; }
+    .muted { color: #9ca3af; font-size: 13px; }
+    .ok { color: #34d399; }
+    .bad { color: #f87171; }
+    .running { color: #fbbf24; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>xstrm Web 管理页</h1>
+    <p class="muted">第一版：状态查看、扫描新增、扫描指定目录、全量重建、最新日志。</p>
+
+    <div class="card">
+      <h2>当前状态</h2>
+      <div id="status" class="grid"></div>
+      <div style="margin-top:12px" class="actions">
+        <button id="refreshBtn" class="secondary">刷新状态</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>任务操作</h2>
+      <div class="actions" style="margin-bottom:12px;">
+        <button id="scanBtn">扫描新增影片</button>
+        <button id="rebuildBtn" class="danger">全量重建</button>
+      </div>
+      <div style="margin-top:8px; margin-bottom:10px;">
+        <label class="muted">扫描指定目录</label>
+        <input id="pathInput" placeholder="例如 /115/电影/泰坦尼克号 或 /mnt/115/电影/泰坦尼克号" />
+      </div>
+      <div class="actions">
+        <button id="scanPathBtn">执行指定目录扫描</button>
+      </div>
+      <p class="muted" style="margin-top:12px;">说明：全量重建会删除旧 .strm 并重新生成，建议谨慎操作。</p>
+    </div>
+
+    <div class="card">
+      <h2>最近日志</h2>
+      <div class="actions" style="margin-bottom:12px;">
+        <button id="logBtn" class="secondary">刷新日志</button>
+      </div>
+      <pre id="logBox">加载中...</pre>
+    </div>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const logBox = document.getElementById('logBox');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const logBtn = document.getElementById('logBtn');
+    const scanBtn = document.getElementById('scanBtn');
+    const rebuildBtn = document.getElementById('rebuildBtn');
+    const scanPathBtn = document.getElementById('scanPathBtn');
+    const pathInput = document.getElementById('pathInput');
+
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function renderStatus(data) {
+      const s = data?.status || {};
+      const stateText = s.running ? '<span class="running">执行中</span>' : (s.success === false ? '<span class="bad">失败</span>' : '<span class="ok">空闲/成功</span>');
+      statusEl.innerHTML = `
+        <div class="card kv"><strong>状态</strong><br>${stateText}</div>
+        <div class="card kv"><strong>任务</strong><br>${escapeHtml(s.task || '-')}</div>
+        <div class="card kv"><strong>消息</strong><br>${escapeHtml(s.message || '-')}</div>
+        <div class="card kv"><strong>开始时间</strong><br>${escapeHtml(s.started_at || '-')}</div>
+        <div class="card kv"><strong>结束时间</strong><br>${escapeHtml(s.finished_at || '-')}</div>
+        <div class="card kv"><strong>日志文件</strong><br>${escapeHtml(s.log_file || '-')}</div>
+        <div class="card kv"><strong>扫描源</strong><br>${escapeHtml((s.sources || []).join(' / ') || '-')}</div>
+      `;
+    }
+
+    async function fetchJson(url, options={}) {
+      const res = await fetch(url, options);
+      const data = await res.json();
+      if (!res.ok || data.ok === false) throw new Error(data.error || '请求失败');
+      return data;
+    }
+
+    async function loadStatus() {
+      const data = await fetchJson('/api/admin/xstrm/status');
+      renderStatus(data);
+    }
+
+    async function loadLogs() {
+      const data = await fetchJson('/api/admin/xstrm/logs/latest');
+      logBox.textContent = data.content || '(暂无日志)';
+    }
+
+    async function runAction(url, body=null, confirmText=null) {
+      if (confirmText && !window.confirm(confirmText)) return;
+      try {
+        const data = await fetchJson(url, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: body ? JSON.stringify(body) : '{}'
+        });
+        alert((data.stdout || data.stderr || '已提交').trim());
+      } catch (e) {
+        alert('执行失败：' + e.message);
+      }
+      await loadStatus();
+      await loadLogs();
+    }
+
+    refreshBtn.onclick = loadStatus;
+    logBtn.onclick = loadLogs;
+    scanBtn.onclick = () => runAction('/api/admin/xstrm/scan');
+    rebuildBtn.onclick = () => runAction('/api/admin/xstrm/rebuild', null, '确认执行全量重建？这会删除旧 .strm 并重新生成。');
+    scanPathBtn.onclick = () => {
+      const path = pathInput.value.trim();
+      if (!path) return alert('请先输入目录');
+      runAction('/api/admin/xstrm/scan-path', {path});
+    };
+
+    Promise.all([loadStatus(), loadLogs()]).catch(err => {
+      statusEl.innerHTML = '<div class="bad">状态加载失败：' + escapeHtml(err.message) + '</div>';
+      logBox.textContent = '日志加载失败：' + err.message;
+    });
+  </script>
+</body>
+</html>
