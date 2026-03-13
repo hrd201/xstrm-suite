@@ -11,6 +11,7 @@ services:
       - /opt/xstrm-suite/nginx/conf.d:/etc/nginx/conf.d:ro
       - /opt/xstrm-suite/nginx/sites-enabled:/etc/nginx/sites-enabled:ro
       - /opt/xstrm-suite/nginx/conf.d/includes:/opt/xstrm-suite/nginx/conf.d/includes:ro
+      - /opt/xstrm-suite/web:/opt/xstrm-suite/web:ro
       - /opt/xstrm-suite/data/nginx-log:/var/log/nginx
       - /opt/xstrm-suite/data/nginx-cache:/var/cache/nginx
 
