@@ -85,6 +85,34 @@
     </div>
 
     <div class="card">
+      <h2>生成配置</h2>
+      <p class="muted">xstrm 只作为独立的 strm 生成工具存在。这里配置它读取哪套 nginx 参数，以及 strm 文件写成什么格式。</p>
+      <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-bottom:12px;">
+        <div>
+          <label class="muted">nginx 配置根目录</label>
+          <input id="profileRootInput" placeholder="例如 /root/emby2Alist/nginx" />
+        </div>
+        <div>
+          <label class="muted">strm 输出模式</label>
+          <select id="strmModeSelect">
+            <option value="auto">auto（按 nginx 配置自动推导）</option>
+            <option value="logical_path">logical_path（如 /115/电影/...）</option>
+            <option value="local_path">local_path（如 /mnt/115/电影/...）</option>
+          </select>
+        </div>
+        <div>
+          <label class="muted">strm 输出目录</label>
+          <input id="outputRootInput" placeholder="例如 /emby-strm" />
+        </div>
+      </div>
+      <div class="actions" style="margin-bottom:10px;">
+        <button id="refreshSettingsBtn" class="secondary">读取 nginx 配置</button>
+        <button id="saveSettingsBtn">保存生成配置</button>
+      </div>
+      <pre id="settingsBox" style="min-height:120px; max-height:260px;">加载中...</pre>
+    </div>
+
+    <div class="card">
       <h2>管理密码</h2>
       <p class="muted">用于保护 `/admin/xstrm/` 和 `/api/admin/xstrm/` 的 Basic Auth。当前用户名固定为 <code>admin</code>。</p>
       <div class="two-col" style="margin-bottom:10px;">
@@ -136,6 +164,12 @@
     const pathHistoryEl = document.getElementById('pathHistory');
     const autoRefreshSelect = document.getElementById('autoRefreshSelect');
     const toastEl = document.getElementById('toast');
+    const profileRootInput = document.getElementById('profileRootInput');
+    const strmModeSelect = document.getElementById('strmModeSelect');
+    const outputRootInput = document.getElementById('outputRootInput');
+    const refreshSettingsBtn = document.getElementById('refreshSettingsBtn');
+    const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+    const settingsBox = document.getElementById('settingsBox');
     const newPasswordInput = document.getElementById('newPasswordInput');
     const confirmPasswordInput = document.getElementById('confirmPasswordInput');
     const changePasswordBtn = document.getElementById('changePasswordBtn');
@@ -160,7 +194,7 @@
     }
 
     function setButtonsDisabled(disabled) {
-      [refreshBtn, logBtn, scanBtn, rebuildBtn, scanPathBtn, changePasswordBtn, refreshSourcesBtn, saveSourcesBtn, addSourceBtn].forEach(btn => btn && (btn.disabled = disabled));
+      [refreshBtn, logBtn, scanBtn, rebuildBtn, scanPathBtn, refreshSettingsBtn, saveSettingsBtn, changePasswordBtn, refreshSourcesBtn, saveSourcesBtn, addSourceBtn].forEach(btn => btn && (btn.disabled = disabled));
     }
 
     function renderStatus(data) {
@@ -194,6 +228,45 @@
       const data = await fetchJson('/api/admin/xstrm/logs/latest');
       logBox.textContent = data.content || '(暂无日志)';
       return data;
+    }
+
+    async function loadSettings() {
+      const data = await fetchJson('/api/admin/xstrm/settings');
+      const s = data.settings || {};
+      profileRootInput.value = s.profile_root || '/root/emby2Alist/nginx';
+      strmModeSelect.value = s.strm_mode || 'auto';
+      outputRootInput.value = s.output_root || '/emby-strm';
+      settingsBox.textContent = JSON.stringify({
+        settings: s,
+        profile: data.profile,
+        profile_error: data.profile_error || null
+      }, null, 2);
+      return data;
+    }
+
+    async function saveSettings() {
+      setButtonsDisabled(true);
+      try {
+        const data = await fetchJson('/api/admin/xstrm/settings', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            profile_root: profileRootInput.value.trim(),
+            strm_mode: strmModeSelect.value,
+            output_root: outputRootInput.value.trim() || '/emby-strm'
+          })
+        });
+        settingsBox.textContent = JSON.stringify({
+          settings: data.settings,
+          profile: data.profile,
+          profile_error: data.profile_error || null
+        }, null, 2);
+        showToast(data.message || '生成配置已更新', 'ok');
+      } catch (e) {
+        showToast('保存生成配置失败：' + e.message, 'bad');
+      } finally {
+        setButtonsDisabled(false);
+      }
     }
 
     async function loadSources() {
@@ -251,6 +324,8 @@
       sourcesData.push({scan_path: '/mnt/115/', output_prefix: '/115/'});
       renderSources();
     };
+    refreshSettingsBtn.onclick = () => loadSettings().then(() => showToast('已读取 nginx 配置')).catch(e => showToast('读取配置失败：' + e.message, 'bad'));
+    saveSettingsBtn.onclick = () => saveSettings();
     refreshSourcesBtn.onclick = () => loadSources();
     saveSourcesBtn.onclick = () => saveSources();
 
@@ -319,6 +394,7 @@
       try {
         await loadStatus();
         await loadLogs();
+        await loadSettings();
         showToast('状态已刷新');
       } catch (e) {
         showToast('刷新失败：' + e.message, 'bad');
@@ -369,7 +445,7 @@
     autoRefreshSelect.onchange = () => setAutoRefresh(Number(autoRefreshSelect.value));
 
     renderPathHistory();
-    Promise.all([loadStatus(), loadLogs(), loadSources()]).then(() => {
+    Promise.all([loadStatus(), loadLogs(), loadSettings(), loadSources()]).then(() => {
       setAutoRefresh(Number(autoRefreshSelect.value));
     }).catch(err => {
       statusEl.innerHTML = '<div class="bad">状态加载失败：' + escapeHtml(err.message) + '</div>';
