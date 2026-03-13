@@ -9,7 +9,7 @@
     body { font-family: system-ui, sans-serif; margin: 0; background: #0b1220; color: #e5e7eb; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 24px; }
     .card { background: #111827; border: 1px solid #374151; border-radius: 14px; padding: 18px; margin-bottom: 16px; }
-    h1,h2 { margin: 0 0 12px; }
+    h1,h2,h3 { margin: 0 0 12px; }
     .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
     .kv { font-size: 14px; line-height: 1.7; }
     .actions { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -17,25 +17,48 @@
     button.secondary { background: #374151; }
     button.danger { background: #dc2626; }
     button:disabled { opacity: .6; cursor: not-allowed; }
-    input { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; border: 1px solid #4b5563; background: #0f172a; color: #e5e7eb; }
+    input, select { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; border: 1px solid #4b5563; background: #0f172a; color: #e5e7eb; }
     pre { white-space: pre-wrap; word-break: break-word; background: #020617; border-radius: 10px; padding: 12px; min-height: 180px; max-height: 420px; overflow: auto; }
     .muted { color: #9ca3af; font-size: 13px; }
     .ok { color: #34d399; }
     .bad { color: #f87171; }
     .running { color: #fbbf24; }
+    .pill { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12px; background: #1f2937; border: 1px solid #374151; }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .toast { position: fixed; right: 20px; bottom: 20px; max-width: 420px; background: #111827; border: 1px solid #374151; border-left: 4px solid #2563eb; padding: 12px 14px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.35); display: none; }
+    .toast.show { display: block; }
+    .toast.ok { border-left-color: #10b981; }
+    .toast.bad { border-left-color: #ef4444; }
+    .two-col { display:grid; grid-template-columns: 1fr 180px; gap:10px; }
+    @media (max-width: 640px) { .two-col { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>xstrm Web 管理页</h1>
-    <p class="muted">第一版：状态查看、扫描新增、扫描指定目录、全量重建、最新日志。</p>
+    <div class="toolbar">
+      <div>
+        <h1>xstrm Web 管理页</h1>
+        <p class="muted">第二版：自动刷新状态、执行反馈优化、指定目录历史、日志自动拉取。</p>
+      </div>
+      <div>
+        <span class="pill">API: /api/admin/xstrm</span>
+      </div>
+    </div>
 
     <div class="card">
-      <h2>当前状态</h2>
-      <div id="status" class="grid"></div>
-      <div style="margin-top:12px" class="actions">
-        <button id="refreshBtn" class="secondary">刷新状态</button>
+      <div class="toolbar">
+        <h2>当前状态</h2>
+        <div class="actions">
+          <select id="autoRefreshSelect" style="width:auto; min-width:130px;">
+            <option value="0">关闭自动刷新</option>
+            <option value="5">每 5 秒</option>
+            <option value="10" selected>每 10 秒</option>
+            <option value="30">每 30 秒</option>
+          </select>
+          <button id="refreshBtn" class="secondary">刷新状态</button>
+        </div>
       </div>
+      <div id="status" class="grid"></div>
     </div>
 
     <div class="card">
@@ -44,24 +67,35 @@
         <button id="scanBtn">扫描新增影片</button>
         <button id="rebuildBtn" class="danger">全量重建</button>
       </div>
+
       <div style="margin-top:8px; margin-bottom:10px;">
         <label class="muted">扫描指定目录</label>
-        <input id="pathInput" placeholder="例如 /115/电影/泰坦尼克号 或 /mnt/115/电影/泰坦尼克号" />
+        <div class="two-col">
+          <input id="pathInput" placeholder="例如 /115/电影/泰坦尼克号 或 /mnt/115/电影/泰坦尼克号" />
+          <button id="scanPathBtn">执行指定目录扫描</button>
+        </div>
       </div>
-      <div class="actions">
-        <button id="scanPathBtn">执行指定目录扫描</button>
+
+      <div style="margin-top:12px;">
+        <h3 style="font-size:15px;">最近使用的目录</h3>
+        <div id="pathHistory" class="actions"></div>
       </div>
-      <p class="muted" style="margin-top:12px;">说明：全量重建会删除旧 .strm 并重新生成，建议谨慎操作。</p>
+
+      <p class="muted" style="margin-top:12px;">说明：全量重建会删除旧 .strm 并重新生成，建议谨慎操作。管理入口建议继续通过 nginx 访问控制或 Basic Auth 保护。</p>
     </div>
 
     <div class="card">
-      <h2>最近日志</h2>
-      <div class="actions" style="margin-bottom:12px;">
-        <button id="logBtn" class="secondary">刷新日志</button>
+      <div class="toolbar">
+        <h2>最近日志</h2>
+        <div class="actions">
+          <button id="logBtn" class="secondary">刷新日志</button>
+        </div>
       </div>
       <pre id="logBox">加载中...</pre>
     </div>
   </div>
+
+  <div id="toast" class="toast"></div>
 
   <script>
     const statusEl = document.getElementById('status');
@@ -72,9 +106,26 @@
     const rebuildBtn = document.getElementById('rebuildBtn');
     const scanPathBtn = document.getElementById('scanPathBtn');
     const pathInput = document.getElementById('pathInput');
+    const pathHistoryEl = document.getElementById('pathHistory');
+    const autoRefreshSelect = document.getElementById('autoRefreshSelect');
+    const toastEl = document.getElementById('toast');
+
+    let refreshTimer = null;
+    const PATH_HISTORY_KEY = 'xstrm.admin.pathHistory';
 
     function escapeHtml(s) {
       return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function showToast(message, type='ok') {
+      toastEl.className = `toast show ${type}`;
+      toastEl.textContent = message;
+      clearTimeout(showToast._timer);
+      showToast._timer = setTimeout(() => toastEl.className = 'toast', 4200);
+    }
+
+    function setButtonsDisabled(disabled) {
+      [refreshBtn, logBtn, scanBtn, rebuildBtn, scanPathBtn].forEach(btn => btn.disabled = disabled);
     }
 
     function renderStatus(data) {
@@ -101,42 +152,114 @@
     async function loadStatus() {
       const data = await fetchJson('/api/admin/xstrm/status');
       renderStatus(data);
+      return data;
     }
 
     async function loadLogs() {
       const data = await fetchJson('/api/admin/xstrm/logs/latest');
       logBox.textContent = data.content || '(暂无日志)';
+      return data;
     }
 
-    async function runAction(url, body=null, confirmText=null) {
+    function getPathHistory() {
+      try { return JSON.parse(localStorage.getItem(PATH_HISTORY_KEY) || '[]'); }
+      catch { return []; }
+    }
+
+    function savePathHistory(path) {
+      const list = getPathHistory().filter(x => x !== path);
+      list.unshift(path);
+      localStorage.setItem(PATH_HISTORY_KEY, JSON.stringify(list.slice(0, 6)));
+      renderPathHistory();
+    }
+
+    function renderPathHistory() {
+      const list = getPathHistory();
+      pathHistoryEl.innerHTML = '';
+      if (!list.length) {
+        pathHistoryEl.innerHTML = '<span class="muted">暂无历史目录</span>';
+        return;
+      }
+      list.forEach(path => {
+        const btn = document.createElement('button');
+        btn.className = 'secondary';
+        btn.textContent = path;
+        btn.onclick = () => { pathInput.value = path; };
+        pathHistoryEl.appendChild(btn);
+      });
+    }
+
+    function setAutoRefresh(seconds) {
+      if (refreshTimer) clearInterval(refreshTimer);
+      if (!seconds) return;
+      refreshTimer = setInterval(async () => {
+        try {
+          await loadStatus();
+          await loadLogs();
+        } catch {}
+      }, seconds * 1000);
+    }
+
+    async function runAction(url, body=null, confirmText=null, successLabel='已提交') {
       if (confirmText && !window.confirm(confirmText)) return;
+      setButtonsDisabled(true);
       try {
         const data = await fetchJson(url, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: body ? JSON.stringify(body) : '{}'
         });
-        alert((data.stdout || data.stderr || '已提交').trim());
+        const text = (data.stdout || data.stderr || successLabel).trim();
+        showToast(text || successLabel, 'ok');
+        if (body?.path) savePathHistory(body.path);
       } catch (e) {
-        alert('执行失败：' + e.message);
+        showToast('执行失败：' + e.message, 'bad');
+      } finally {
+        await loadStatus().catch(() => {});
+        await loadLogs().catch(() => {});
+        setButtonsDisabled(false);
       }
-      await loadStatus();
-      await loadLogs();
     }
 
-    refreshBtn.onclick = loadStatus;
-    logBtn.onclick = loadLogs;
-    scanBtn.onclick = () => runAction('/api/admin/xstrm/scan');
-    rebuildBtn.onclick = () => runAction('/api/admin/xstrm/rebuild', null, '确认执行全量重建？这会删除旧 .strm 并重新生成。');
-    scanPathBtn.onclick = () => {
-      const path = pathInput.value.trim();
-      if (!path) return alert('请先输入目录');
-      runAction('/api/admin/xstrm/scan-path', {path});
+    refreshBtn.onclick = async () => {
+      setButtonsDisabled(true);
+      try {
+        await loadStatus();
+        await loadLogs();
+        showToast('状态已刷新');
+      } catch (e) {
+        showToast('刷新失败：' + e.message, 'bad');
+      } finally {
+        setButtonsDisabled(false);
+      }
     };
 
-    Promise.all([loadStatus(), loadLogs()]).catch(err => {
+    logBtn.onclick = async () => {
+      try {
+        await loadLogs();
+        showToast('日志已刷新');
+      } catch (e) {
+        showToast('日志刷新失败：' + e.message, 'bad');
+      }
+    };
+
+    scanBtn.onclick = () => runAction('/api/admin/xstrm/scan', null, null, '已触发增量扫描');
+    rebuildBtn.onclick = () => runAction('/api/admin/xstrm/rebuild', null, '确认执行全量重建？这会删除旧 .strm 并重新生成。', '已触发全量重建');
+    scanPathBtn.onclick = () => {
+      const path = pathInput.value.trim();
+      if (!path) return showToast('请先输入目录', 'bad');
+      runAction('/api/admin/xstrm/scan-path', {path}, null, '已触发指定目录扫描');
+    };
+
+    autoRefreshSelect.onchange = () => setAutoRefresh(Number(autoRefreshSelect.value));
+
+    renderPathHistory();
+    Promise.all([loadStatus(), loadLogs()]).then(() => {
+      setAutoRefresh(Number(autoRefreshSelect.value));
+    }).catch(err => {
       statusEl.innerHTML = '<div class="bad">状态加载失败：' + escapeHtml(err.message) + '</div>';
       logBox.textContent = '日志加载失败：' + err.message;
+      showToast('页面初始化失败：' + err.message, 'bad');
     });
   </script>
 </body>
