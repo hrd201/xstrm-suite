@@ -121,7 +121,7 @@ sync_project() {
   log "sync project to $INSTALL_ROOT"
   mkdir -p "$INSTALL_ROOT"
   cp -a "$BASE_DIR/." "$INSTALL_ROOT/"
-  chmod +x "$INSTALL_ROOT/bin/xstrm" "$INSTALL_ROOT/bin/xstrm-admin" "$INSTALL_ROOT/scripts/"*.sh "$INSTALL_ROOT/scripts/strm_x.py" "$INSTALL_ROOT/scripts/render_runtime.py"
+  chmod +x "$INSTALL_ROOT/bin/xstrm" "$INSTALL_ROOT/bin/xstrm-admin" "$INSTALL_ROOT/scripts/"*.sh "$INSTALL_ROOT/scripts/strm_x.py" "$INSTALL_ROOT/scripts/render_runtime.py" "$INSTALL_ROOT/scripts/admin_api.py"
 }
 
 configure_runtime() {
@@ -151,6 +151,11 @@ install_services() {
     cp "$INSTALL_ROOT/services/xstrm.service" "$SERVICE_DIR/xstrm.service"
     sed -i 's#/opt/xstrm-suite#'$INSTALL_ROOT'#g' "$SERVICE_DIR/xstrm.service"
     log "installed service template: xstrm.service"
+  fi
+  if [ -f "$INSTALL_ROOT/services/xstrm-admin-api.service" ]; then
+    cp "$INSTALL_ROOT/services/xstrm-admin-api.service" "$SERVICE_DIR/xstrm-admin-api.service"
+    sed -i 's#/opt/xstrm-suite#'$INSTALL_ROOT'#g' "$SERVICE_DIR/xstrm-admin-api.service"
+    log "installed service template: xstrm-admin-api.service"
   fi
 }
 
