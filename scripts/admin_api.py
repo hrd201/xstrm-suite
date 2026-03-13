@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import subprocess
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -52,6 +53,22 @@ def save_sync_config(data: dict):
     import yaml
     CONFIG_PATH.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding='utf-8')
 
+
+def derive_sources_preview(profile: dict, resolved_mode: str) -> tuple[list[dict], str | None]:
+    payload = json.dumps({
+        'emby2alist': {'media_mount_path': profile.get('mediaMountPath', [])},
+        'strm_mode': resolved_mode,
+        'resolved_strm_mode': resolved_mode,
+        'sources': [],
+    }, ensure_ascii=False)
+    proc = subprocess.run([sys.executable, '-c', "import json, sys; from scripts.strm_x import ensure_integrated_config, build_example_target; cfg = ensure_integrated_config(json.loads(sys.stdin.read())); print(json.dumps({'sources': cfg.get('sources', []), 'expected_target_example': build_example_target(cfg)}, ensure_ascii=False))"], cwd=BASE_DIR, input=payload, capture_output=True, text=True)
+    if proc.returncode != 0:
+        return [], None
+    try:
+        data = json.loads(proc.stdout)
+    except Exception:
+        return [], None
+    return data.get('sources', []), data.get('expected_target_example')
 
 def load_nginx_profile(profile_root: str | None = None) -> tuple[bool, dict | str]:
     target = profile_root or '/root/emby2Alist/nginx'
@@ -107,6 +124,7 @@ class Handler(BaseHTTPRequestHandler):
             selected_mode = cfg.get('strm_mode', 'auto')
             ok, profile = load_nginx_profile(cfg.get('emby2alist', {}).get('profile_root'))
             resolved_mode = profile.get('preferredStrmMode', 'logical_path') if ok and selected_mode == 'auto' else selected_mode
+            derived_sources, expected_example = derive_sources_preview(profile if ok else {}, resolved_mode)
             return self._json(200, {
                 'ok': True,
                 'settings': {
@@ -115,6 +133,8 @@ class Handler(BaseHTTPRequestHandler):
                     'output_root': cfg.get('output_root', '/emby-strm'),
                     'profile_root': cfg.get('emby2alist', {}).get('profile_root', '/root/emby2Alist/nginx'),
                     'media_mount_path': cfg.get('emby2alist', {}).get('media_mount_path', []),
+                    'derived_sources': derived_sources,
+                    'expected_target_example': expected_example,
                 },
                 'profile': profile if ok else None,
                 'profile_error': None if ok else profile,
@@ -196,6 +216,7 @@ class Handler(BaseHTTPRequestHandler):
             if ok:
                 cfg['emby2alist']['media_mount_path'] = profile.get('mediaMountPath', [])
                 cfg['resolved_strm_mode'] = profile.get('preferredStrmMode', 'logical_path') if strm_mode == 'auto' else strm_mode
+            derived_sources, expected_example = derive_sources_preview(profile if ok else {}, cfg.get('resolved_strm_mode', strm_mode))
             save_sync_config(cfg)
             return self._json(200, {
                 'ok': True,
@@ -206,6 +227,8 @@ class Handler(BaseHTTPRequestHandler):
                     'output_root': cfg.get('output_root'),
                     'profile_root': cfg.get('emby2alist', {}).get('profile_root'),
                     'media_mount_path': cfg.get('emby2alist', {}).get('media_mount_path', []),
+                    'derived_sources': derived_sources,
+                    'expected_target_example': expected_example,
                 },
                 'profile': profile if ok else None,
                 'profile_error': None if ok else profile,
