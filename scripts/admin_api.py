@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
+import crypt
 import json
-import shlex
 import subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlparse
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = BASE_DIR / 'scripts'
+HTPASSWD_PATH = BASE_DIR / 'nginx' / 'conf.d' / '.htpasswd-xstrm-admin'
 HOST = '127.0.0.1'
 PORT = 18095
 
@@ -21,6 +22,22 @@ TASKS = {
 def run_cmd(cmd: list[str]) -> tuple[int, str, str]:
     proc = subprocess.run(cmd, cwd=BASE_DIR, capture_output=True, text=True)
     return proc.returncode, proc.stdout, proc.stderr
+
+
+def update_basic_auth_password(new_password: str) -> tuple[bool, str]:
+    new_password = (new_password or '').strip()
+    if len(new_password) < 8:
+        return False, '新密码至少 8 位'
+    salt_proc = subprocess.run(['openssl', 'passwd', '-apr1', new_password], capture_output=True, text=True)
+    if salt_proc.returncode != 0:
+        return False, (salt_proc.stderr or salt_proc.stdout or '生成密码哈希失败').strip()
+    HTPASSWD_PATH.parent.mkdir(parents=True, exist_ok=True)
+    HTPASSWD_PATH.write_text(f"admin:{salt_proc.stdout.strip()}\n", encoding='utf-8')
+    HTPASSWD_PATH.chmod(0o600)
+    reload_proc = subprocess.run(['docker', 'exec', 'xstrm-nginx', 'nginx', '-s', 'reload'], capture_output=True, text=True)
+    if reload_proc.returncode != 0:
+        return False, (reload_proc.stderr or reload_proc.stdout or 'nginx reload 失败').strip()
+    return True, '管理密码已更新并生效'
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -101,6 +118,16 @@ class Handler(BaseHTTPRequestHandler):
                 'stdout': out,
                 'stderr': err,
             })
+
+        if parsed.path == '/api/admin/xstrm/change-password':
+            password = (data.get('password') or '').strip()
+            confirm = (data.get('confirm') or '').strip()
+            if not password:
+                return self._json(400, {'ok': False, 'error': 'password required'})
+            if password != confirm:
+                return self._json(400, {'ok': False, 'error': '两次输入的密码不一致'})
+            ok, message = update_basic_auth_password(password)
+            return self._json(200 if ok else 500, {'ok': ok, 'message': message})
 
         return self._json(404, {'ok': False, 'error': 'not found'})
 
