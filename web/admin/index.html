@@ -142,6 +142,17 @@
 
     <div class="card">
       <div class="toolbar">
+        <h2>STRM 健康检查</h2>
+        <div class="actions">
+          <button id="strmHealthBtn" class="secondary">执行健康扫描</button>
+        </div>
+      </div>
+      <div id="strmHealthSummary" class="grid" style="margin-bottom:12px;"></div>
+      <pre id="strmHealthBox">点击“执行健康扫描”开始。</pre>
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
         <h2>最近日志</h2>
         <div class="actions">
           <button id="logBtn" class="secondary">刷新日志</button>
@@ -179,6 +190,9 @@
     const refreshSourcesBtn = document.getElementById('refreshSourcesBtn');
     const saveSourcesBtn = document.getElementById('saveSourcesBtn');
     const addSourceBtn = document.getElementById('addSourceBtn');
+    const strmHealthBtn = document.getElementById('strmHealthBtn');
+    const strmHealthSummaryEl = document.getElementById('strmHealthSummary');
+    const strmHealthBox = document.getElementById('strmHealthBox');
     let sourcesData = [];
 
     let refreshTimer = null;
@@ -196,7 +210,7 @@
     }
 
     function setButtonsDisabled(disabled) {
-      [refreshBtn, logBtn, scanBtn, rebuildBtn, scanPathBtn, refreshSettingsBtn, saveSettingsBtn, changePasswordBtn, refreshSourcesBtn, saveSourcesBtn, addSourceBtn].forEach(btn => btn && (btn.disabled = disabled));
+      [refreshBtn, logBtn, scanBtn, rebuildBtn, scanPathBtn, refreshSettingsBtn, saveSettingsBtn, changePasswordBtn, refreshSourcesBtn, saveSourcesBtn, addSourceBtn, strmHealthBtn].forEach(btn => btn && (btn.disabled = disabled));
     }
 
     function renderStatus(data) {
@@ -229,6 +243,23 @@
     async function loadLogs() {
       const data = await fetchJson('/api/admin/xstrm/logs/latest');
       logBox.textContent = data.content || '(暂无日志)';
+      return data;
+    }
+
+    function renderStrmHealth(report) {
+      strmHealthSummaryEl.innerHTML = `
+        <div class="card kv"><strong>STRM 总数</strong><br>${escapeHtml(report?.total_strm_items ?? 0)}</div>
+        <div class="card kv"><strong>可重定向</strong><br><span class="ok">${escapeHtml(report?.healthy_redirect ?? 0)}</span></div>
+        <div class="card kv"><strong>缺失文件</strong><br><span class="${(report?.missing_file || 0) ? 'bad' : 'ok'}">${escapeHtml(report?.missing_file ?? 0)}</span></div>
+        <div class="card kv"><strong>失败项</strong><br><span class="${(report?.failed_non_redirect || 0) ? 'bad' : 'ok'}">${escapeHtml(report?.failed_non_redirect ?? 0)}</span></div>
+      `;
+      strmHealthBox.textContent = JSON.stringify(report || {}, null, 2);
+    }
+
+    async function loadStrmHealth() {
+      strmHealthBox.textContent = '正在执行健康扫描...';
+      const data = await fetchJson('/api/admin/xstrm/strm-health');
+      renderStrmHealth(data.report || {});
       return data;
     }
 
@@ -428,6 +459,18 @@
         showToast('日志已刷新');
       } catch (e) {
         showToast('日志刷新失败：' + e.message, 'bad');
+      }
+    };
+
+    strmHealthBtn.onclick = async () => {
+      setButtonsDisabled(true);
+      try {
+        await loadStrmHealth();
+        showToast('STRM 健康扫描完成');
+      } catch (e) {
+        showToast('STRM 健康扫描失败：' + e.message, 'bad');
+      } finally {
+        setButtonsDisabled(false);
       }
     };
 
