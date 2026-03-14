@@ -14,4 +14,5 @@ services:
       - /opt/xstrm-suite/web:/opt/xstrm-suite/web:ro
       - /opt/xstrm-suite/data/nginx-log:/var/log/nginx
       - /opt/xstrm-suite/data/nginx-cache:/var/cache/nginx
+      - /www/server/panel/vhost/cert/your-domain.example.com:/www/server/panel/vhost/cert/your-domain.example.com:ro
 
