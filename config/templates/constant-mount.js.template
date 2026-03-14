@@ -1,3 +1,9 @@
+import commonConfig from "./constant-common.js";
+
+const strHead = commonConfig.strHead;
+
+// 选填项,用不到保持默认即可
+
 const alistAddr = "{{ alist.addr }}";
 const alistToken = "{{ alist.token }}";
 const alistSignEnable = {{ alist.sign_enable_js }};
