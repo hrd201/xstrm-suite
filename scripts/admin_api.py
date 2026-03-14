@@ -85,37 +85,37 @@ def load_nginx_profile(profile_root: str | None = None) -> tuple[bool, dict | st
 class Handler(BaseHTTPRequestHandler):
     server_version = 'xstrm-admin-api/0.1'
 
-    def _json(self, code: int, data: dict):
-        body = json.dumps(data, ensure_ascii=False).encode('utf-8')
+    def _send_bytes(self, code: int, body: bytes, content_type: str, write_body: bool = True):
         self.send_response(code)
-        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Type', content_type)
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        if write_body:
+            self.wfile.write(body)
 
-    def _html(self, code: int, html: str):
+    def _json(self, code: int, data: dict, write_body: bool = True):
+        body = json.dumps(data, ensure_ascii=False).encode('utf-8')
+        self._send_bytes(code, body, 'application/json; charset=utf-8', write_body=write_body)
+
+    def _html(self, code: int, html: str, write_body: bool = True):
         body = html.encode('utf-8')
-        self.send_response(code)
-        self.send_header('Content-Type', 'text/html; charset=utf-8')
-        self.send_header('Content-Length', str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        self._send_bytes(code, body, 'text/html; charset=utf-8', write_body=write_body)
 
     def log_message(self, fmt, *args):
         return
 
-    def do_GET(self):
+    def _handle_get(self, write_body: bool = True):
         parsed = urlparse(self.path)
         if parsed.path in ('/admin/xstrm', '/admin/xstrm/'):
             index = WEB_DIR / 'index.html'
             if not index.exists():
-                return self._html(404, 'xstrm admin index.html not found')
-            return self._html(200, index.read_text(encoding='utf-8'))
+                return self._html(404, 'xstrm admin index.html not found', write_body=write_body)
+            return self._html(200, index.read_text(encoding='utf-8'), write_body=write_body)
         if parsed.path == '/admin/xstrm/index.html':
             index = WEB_DIR / 'index.html'
             if not index.exists():
-                return self._html(404, 'xstrm admin index.html not found')
-            return self._html(200, index.read_text(encoding='utf-8'))
+                return self._html(404, 'xstrm admin index.html not found', write_body=write_body)
+            return self._html(200, index.read_text(encoding='utf-8'), write_body=write_body)
         if parsed.path == '/api/admin/xstrm/status':
             code, out, err = run_cmd(TASKS['status'])
             if code == 0:
@@ -123,21 +123,21 @@ class Handler(BaseHTTPRequestHandler):
                     payload = json.loads(out)
                 except Exception:
                     payload = {'raw': out}
-                return self._json(200, {'ok': True, 'status': payload})
-            return self._json(500, {'ok': False, 'error': err or out})
+                return self._json(200, {'ok': True, 'status': payload}, write_body=write_body)
+            return self._json(500, {'ok': False, 'error': err or out}, write_body=write_body)
         if parsed.path == '/api/admin/xstrm/logs/latest':
             status_file = BASE_DIR / 'data' / 'tasks' / 'status.json'
             if not status_file.exists():
-                return self._json(200, {'ok': True, 'log_file': None, 'content': ''})
+                return self._json(200, {'ok': True, 'log_file': None, 'content': ''}, write_body=write_body)
             status = json.loads(status_file.read_text(encoding='utf-8'))
             log_file = status.get('log_file')
             content = ''
             if log_file and Path(log_file).exists():
                 content = Path(log_file).read_text(encoding='utf-8', errors='ignore')[-12000:]
-            return self._json(200, {'ok': True, 'log_file': log_file, 'content': content})
+            return self._json(200, {'ok': True, 'log_file': log_file, 'content': content}, write_body=write_body)
         if parsed.path == '/api/admin/xstrm/sources':
             cfg = load_sync_config()
-            return self._json(200, {'ok': True, 'sources': cfg.get('sources', [])})
+            return self._json(200, {'ok': True, 'sources': cfg.get('sources', [])}, write_body=write_body)
         if parsed.path == '/api/admin/xstrm/settings':
             cfg = load_sync_config()
             selected_mode = cfg.get('strm_mode', 'auto')
@@ -157,8 +157,14 @@ class Handler(BaseHTTPRequestHandler):
                 },
                 'profile': profile if ok else None,
                 'profile_error': None if ok else profile,
-            })
-        return self._json(404, {'ok': False, 'error': 'not found'})
+            }, write_body=write_body)
+        return self._json(404, {'ok': False, 'error': 'not found'}, write_body=write_body)
+
+    def do_GET(self):
+        return self._handle_get(write_body=True)
+
+    def do_HEAD(self):
+        return self._handle_get(write_body=False)
 
     def do_POST(self):
         parsed = urlparse(self.path)
@@ -251,9 +257,9 @@ class Handler(BaseHTTPRequestHandler):
                 },
                 'profile': profile if ok else None,
                 'profile_error': None if ok else profile,
-            })
+            }, write_body=write_body)
 
-        return self._json(404, {'ok': False, 'error': 'not found'})
+        return self._json(404, {'ok': False, 'error': 'not found'}, write_body=write_body)
 
 
 if __name__ == '__main__':
