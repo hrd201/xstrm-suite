@@ -87,8 +87,6 @@ def main():
     constant_mount = render_template(TEMPLATE_DIR / 'constant-mount.js.template', mapping)
     strm_sync = render_template(TEMPLATE_DIR / 'strm-sync.yaml.template', mapping)
     nginx_patch = render_template(TEMPLATE_DIR / 'nginx.conf.patch.template', mapping)
-    site_http = render_template(TEMPLATE_DIR / 'site-http.conf.template', mapping)
-    site_https = render_template(TEMPLATE_DIR / 'site-https.conf.template', mapping)
     docker_compose = render_template(TEMPLATE_DIR / 'docker-compose.yml.template', mapping)
 
     (OUT_NGINX_DIR / 'conf.d' / 'constant.js.runtime').write_text(constant_js, encoding='utf-8')
@@ -96,11 +94,10 @@ def main():
     OUT_STRM_SYNC.write_text(strm_sync, encoding='utf-8')
     (OUT_NGINX_DIR / 'nginx.runtime.conf').write_text(nginx_patch, encoding='utf-8')
     OUT_SITES_DIR.mkdir(parents=True, exist_ok=True)
-    (OUT_SITES_DIR / 'xstrm-http.conf').write_text(site_http, encoding='utf-8')
-    if cfg['nginx'].get('https_enabled'):
-        (OUT_SITES_DIR / 'xstrm-https.conf').write_text(site_https, encoding='utf-8')
-    elif (OUT_SITES_DIR / 'xstrm-https.conf').exists():
-        (OUT_SITES_DIR / 'xstrm-https.conf').unlink()
+    for stale in ('xstrm-http.conf', 'xstrm-https.conf'):
+        p = OUT_SITES_DIR / stale
+        if p.exists():
+            p.unlink()
     OUT_COMPOSE.write_text(docker_compose, encoding='utf-8')
 
     print('render complete:')
@@ -108,9 +105,6 @@ def main():
     print(f'- {OUT_NGINX_DIR / "conf.d" / "config" / "constant-mount.runtime.js"}')
     print(f'- {OUT_STRM_SYNC}')
     print(f'- {OUT_NGINX_DIR / "nginx.runtime.conf"}')
-    print(f'- {OUT_SITES_DIR / "xstrm-http.conf"}')
-    if cfg['nginx'].get('https_enabled'):
-        print(f'- {OUT_SITES_DIR / "xstrm-https.conf"}')
     print(f'- {OUT_COMPOSE}')
 
 
