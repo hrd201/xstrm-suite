@@ -103,3 +103,11 @@ xstrm-admin
 - 菜单 1：只列出两层目录（如 `/115/电影`），不显示 `/mnt`
 - 菜单 2：处理更深层目录，例如合集、复杂目录
 - 当前 bootstrap 已能完成第一版部署，但 nginx 生产启用、emby2alist service 化、定时任务等还会继续补强
+
+## 使用文档
+
+推荐先看：
+
+- `docs/USAGE.md`：当前可用状态下的正式使用说明
+- `docs/HTTP_HTTPS_SWITCH.md`：HTTP / HTTPS 切换说明
+- `docs/RUNTIME_CONFIG_DESIGN.md`：runtime 渲染与应用设计
