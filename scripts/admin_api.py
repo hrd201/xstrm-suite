@@ -135,6 +135,11 @@ class Handler(BaseHTTPRequestHandler):
             if log_file and Path(log_file).exists():
                 content = Path(log_file).read_text(encoding='utf-8', errors='ignore')[-12000:]
             return self._json(200, {'ok': True, 'log_file': log_file, 'content': content}, write_body=write_body)
+        if parsed.path == '/api/admin/xstrm/strm-health':
+            code, out, err = run_cmd([sys.executable, str(SCRIPTS_DIR / 'strm_health_check.py')])
+            if code == 0:
+                return self._json(200, {'ok': True, 'report': json.loads(out)}, write_body=write_body)
+            return self._json(500, {'ok': False, 'error': err or out or 'strm health check failed'}, write_body=write_body)
         if parsed.path == '/api/admin/xstrm/sources':
             cfg = load_sync_config()
             return self._json(200, {'ok': True, 'sources': cfg.get('sources', [])}, write_body=write_body)
