@@ -1,5 +1,7 @@
 # xstrm-suite
 
+[English](./README.md) | [中文](./README.zh-CN.md)
+
 STRM 文件管理系统，用于 Emby + AList 集成。自动生成 `.strm` 文件指向 AList 托管的媒体文件，使 Emby 能够直接从 AList 存储播放媒体。
 
 ## 功能特性
