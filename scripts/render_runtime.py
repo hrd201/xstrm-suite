@@ -39,11 +39,11 @@ def build_mapping(cfg: dict):
     source_lines = []
     for src in sources:
         source_lines.append(f"- path: {src}")
+        source_lines.append('  scan_mode: alist')
         source_lines.append('  library_type: movie' if src.endswith('/电影') else '  library_type: series')
         source_lines.append('  watch_depth: 1')
         source_lines.append(f'  output_prefix: {src}')
-        scan_path = f"{mount_paths[0]}{src}" if mount_paths else src
-        source_lines.append(f'  scan_path: {scan_path}')
+        source_lines.append(f'  scan_path: {src}')
     alist_addr = f"{cfg['alist'].get('scheme', 'http')}://{cfg['alist']['host']}:{cfg['alist']['port']}"
     cert_mount_block = ''
     if cfg['nginx'].get('https_enabled') and cfg['nginx'].get('ssl_cert'):
