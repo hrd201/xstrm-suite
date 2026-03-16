@@ -4,6 +4,18 @@
 
 STRM file management system for Emby + AList integration. Automatically generates `.strm` files that point to AList-hosted media files, enabling Emby to play directly from AList storage.
 
+> This project is based on [embyExternalUrl](https://github.com/bpking1/embyExternalUrl) and modified to address specific needs.
+
+## Project Purpose
+
+xstrm-suite is designed to solve common challenges when using Emby with cloud storage (like AList):
+
+1. **Prevent Account Risks**: Avoid cloud storage account bans caused by Emby's aggressive scraping
+2. **Improve Performance**: Eliminate slow metadata refresh, recognition, and fetching issues
+3. **Flexible Configuration**: No need to modify existing Emby or AList configurations
+4. **Auto-Discovery**: Automatically obtain Emby and AList configurations/paths via API
+5. **Unified Port**: Works alongside direct proxy on the same port, plugin-style management
+
 ## Features
 
 - **AList Integration**: Direct integration with AList for media scanning
@@ -290,6 +302,10 @@ python3 -m cmd.cli --scan-path "/mnt/115/电影"
 # View configuration
 python3 -m cmd.cli --config
 ```
+
+## Acknowledgments
+
+Special thanks to [bpking1](https://github.com/bpking1) for creating [embyExternalUrl](https://github.com/bpking1/embyExternalUrl), which inspired this project.
 
 ## License
 
