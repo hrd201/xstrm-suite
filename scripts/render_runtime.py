@@ -71,7 +71,7 @@ def build_mapping(cfg: dict):
         'nginx.ssl_cert': cfg['nginx'].get('ssl_cert', ''),
         'nginx.ssl_key': cfg['nginx'].get('ssl_key', ''),
         'nginx.backend_scheme': cfg['nginx'].get('backend_scheme', 'http'),
-        'nginx.backend_port': cfg['nginx'].get('backend_port', 8095),
+        'nginx.backend_port': cfg['nginx'].get('backend_port', 18095),
         'docker.cert_mount_block': cert_mount_block,
     }
 
@@ -88,6 +88,8 @@ def main():
     strm_sync = render_template(TEMPLATE_DIR / 'strm-sync.yaml.template', mapping)
     nginx_patch = render_template(TEMPLATE_DIR / 'nginx.conf.patch.template', mapping)
     docker_compose = render_template(TEMPLATE_DIR / 'docker-compose.yml.template', mapping)
+    http_site = render_template(TEMPLATE_DIR / 'site-http.conf.template', mapping)
+    https_site = render_template(TEMPLATE_DIR / 'site-https.conf.template', mapping)
 
     (OUT_NGINX_DIR / 'conf.d' / 'constant.js.runtime').write_text(constant_js, encoding='utf-8')
     (OUT_NGINX_DIR / 'conf.d' / 'config' / 'constant-mount.runtime.js').write_text(constant_mount, encoding='utf-8')
@@ -98,6 +100,9 @@ def main():
         p = OUT_SITES_DIR / stale
         if p.exists():
             p.unlink()
+    (OUT_SITES_DIR / 'xstrm-http.conf').write_text(http_site, encoding='utf-8')
+    if cfg['nginx'].get('https_enabled'):
+        (OUT_SITES_DIR / 'xstrm-https.conf').write_text(https_site, encoding='utf-8')
     OUT_COMPOSE.write_text(docker_compose, encoding='utf-8')
 
     print('render complete:')
@@ -105,6 +110,9 @@ def main():
     print(f'- {OUT_NGINX_DIR / "conf.d" / "config" / "constant-mount.runtime.js"}')
     print(f'- {OUT_STRM_SYNC}')
     print(f'- {OUT_NGINX_DIR / "nginx.runtime.conf"}')
+    print(f'- {OUT_SITES_DIR / "xstrm-http.conf"}')
+    if cfg['nginx'].get('https_enabled'):
+        print(f'- {OUT_SITES_DIR / "xstrm-https.conf"}')
     print(f'- {OUT_COMPOSE}')
 
 
