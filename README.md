@@ -305,7 +305,7 @@ python3 -m cmd.cli --config
 
 ## Acknowledgments
 
-Special thanks to [bpking1](https://github.com/bpking1) for creating [embyExternalUrl](https://github.com/bpking1/embyExternalUrl), which inspired this project.
+This project is based on and extends the [emby2alist](https://github.com/bpking1/embyExternalUrl/tree/emby2alist) branch of [embyExternalUrl](https://github.com/bpking1/embyExternalUrl) by [bpking1](https://github.com/bpking1).
 
 ## License
 
