@@ -4,6 +4,18 @@
 
 STRM 文件管理系统，用于 Emby + AList 集成。自动生成 `.strm` 文件指向 AList 托管的媒体文件，使 Emby 能够直接从 AList 存储播放媒体。
 
+> 本项目基于 [embyExternalUrl](https://github.com/bpking1/embyExternalUrl) 修改。
+
+## 项目目的
+
+xstrm-suite 旨在解决 Emby 配合网盘使用时遇到的常见问题：
+
+1. **规避风控风险**：避免 Emby 频繁刮削导致网盘账号被风控甚至封号
+2. **提升响应速度**：解决 Emby 刷新、识别、获取元数据缓慢的问题
+3. **配置灵活**：无需修改原有 Emby 和 AList 配置
+4. **自动获取**：通过 API 自动获取 Emby 及 AList 配置/路径，方便使用
+5. **统一端口**：与直连代理共用端口，插件形式存在，便于管理
+
 ## 功能特性
 
 - **AList 集成**：直接集成 AList 进行媒体扫描
@@ -294,6 +306,10 @@ python3 -m cmd.cli --config
 ## 更新日志
 
 详细更新日志请参阅 [CHANGELOG.md](CHANGELOG.md)
+
+## 致谢
+
+特别感谢 [bpking1](https://github.com/bpking1) 创建了 [embyExternalUrl](https://github.com/bpking1/embyExternalUrl)，本项目受其启发而诞生。
 
 ## 许可证
 
