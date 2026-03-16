@@ -1,3 +1,9 @@
+import commonConfig from "./constant-common.js";
+
+const strHead = commonConfig.strHead;
+
+// 选填项,用不到保持默认即可
+
 const alistAddr = "http://YOUR_ALIST_HOST:5388";
 const alistToken = "YOUR_ALIST_TOKEN";
 const alistSignEnable = false;
