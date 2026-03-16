@@ -77,7 +77,7 @@ def main():
     cfg['nginx']['server_name'] = ask('nginx server_name', cfg['nginx'].get('server_name', '_'))
     cfg['nginx']['http_port'] = int(ask('nginx HTTP 对外端口', str(cfg['nginx'].get('http_port', 8095))))
     cfg['nginx']['backend_scheme'] = ask('nginx 后端协议（http/https）', cfg['nginx'].get('backend_scheme', 'http'))
-    cfg['nginx']['backend_port'] = int(ask('nginx 后端代理端口', str(cfg['nginx'].get('backend_port', 8095))))
+    cfg['nginx']['backend_port'] = int(ask('nginx 后端代理端口', str(cfg['nginx'].get('backend_port', 18095))))
     https_enabled = ask_bool('是否启用 HTTPS', cfg['nginx'].get('https_enabled', False))
     cfg['nginx']['https_enabled'] = https_enabled
     cfg['nginx']['https_port'] = int(ask('nginx HTTPS 对外端口', str(cfg['nginx'].get('https_port', 8443))))

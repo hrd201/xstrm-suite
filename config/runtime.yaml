@@ -20,7 +20,7 @@ nginx:
   ssl_cert: /www/server/panel/vhost/cert/your-domain.example.com/fullchain.pem
   ssl_key: /www/server/panel/vhost/cert/your-domain.example.com/privkey.pem
   backend_scheme: http
-  backend_port: 8095
+  backend_port: 18095
 mount:
   media_mount_path:
   - /mnt

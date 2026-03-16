@@ -51,8 +51,10 @@ def patch_nginx_conf(cfg: dict):
         f'# ssl_key={cfg["nginx"].get("ssl_key", "")}\n'
     )
     text = re.sub(r'^(# xstrm runtime\n(?:# .*\n){0,8})', '', text, flags=re.M)
-    text = text.replace('    include sites-enabled/*.conf;\n', '')
-    text = text.replace('    include sites-enabled/*.conf;', '')
+    if 'include sites-enabled/*.conf;' not in text:
+        marker = '    include /etc/nginx/conf.d/*.conf;\n'
+        if marker in text:
+            text = text.replace(marker, marker + '    include sites-enabled/*.conf;\n')
     nginx_conf.write_text(header + text, encoding='utf-8')
 
 
