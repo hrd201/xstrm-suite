@@ -19,20 +19,23 @@ sources:
   library_type: movie
   watch_depth: 1
   output_prefix: /115/电影
-  scan_path: /mnt/115/电影
+  scan_path: /115/电影
+  scan_mode: alist
 - path: /115/剧集
   library_type: series
   watch_depth: 1
   output_prefix: /115/剧集
-  scan_path: /mnt/115/剧集
+  scan_path: /115/剧集
+  scan_mode: alist
 - path: /115/动画
   library_type: series
   watch_depth: 1
   output_prefix: /115/动画
-  scan_path: /mnt/115/动画
+  scan_path: /115/动画
+  scan_mode: alist
 emby2alist:
   media_mount_path:
   - /mnt
-  profile_root: /root/emby2Alist/nginx
+  profile_root: /root/.openclaw/workspace/projects/xstrm-suite/emby2alist
 strm_mode: auto
-resolved_strm_mode: local_path
+resolved_strm_mode: logical_path
