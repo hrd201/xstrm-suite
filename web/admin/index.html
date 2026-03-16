@@ -69,11 +69,27 @@
       </div>
 
       <div style="margin-top:8px; margin-bottom:10px;">
-        <label class="muted">扫描指定目录</label>
+        <label class="muted">扫描指定 AList 目录</label>
         <div class="two-col">
-          <input id="pathInput" placeholder="例如 /115/电影/泰坦尼克号 或 /mnt/115/电影/泰坦尼克号" />
+          <input id="pathInput" placeholder="例如 /mnt/115/电影 或 /mnt/115/电影/角斗士2 Gladiator II" />
           <button id="scanPathBtn">执行指定目录扫描</button>
         </div>
+      </div>
+
+      <div style="margin-top:12px; margin-bottom:12px;">
+        <div class="toolbar">
+          <h3 style="font-size:15px;">AList 目录浏览</h3>
+          <div class="actions">
+            <button id="browseRootBtn" class="secondary">从根目录开始</button>
+            <button id="useBrowsePathBtn" class="secondary">使用当前目录</button>
+          </div>
+        </div>
+        <div class="two-col" style="margin-top:8px;">
+          <input id="browsePathInput" placeholder="浏览路径，例如 / 或 /mnt/115" />
+          <button id="browsePathBtn" class="secondary">浏览此目录</button>
+        </div>
+        <div id="browseBreadcrumb" class="actions" style="margin-top:8px;"></div>
+        <div id="browseList" class="card" style="padding:10px; margin-top:8px; min-height:80px;"></div>
       </div>
 
       <div style="margin-top:12px;">
@@ -173,6 +189,12 @@
     const rebuildBtn = document.getElementById('rebuildBtn');
     const scanPathBtn = document.getElementById('scanPathBtn');
     const pathInput = document.getElementById('pathInput');
+    const browseRootBtn = document.getElementById('browseRootBtn');
+    const useBrowsePathBtn = document.getElementById('useBrowsePathBtn');
+    const browsePathBtn = document.getElementById('browsePathBtn');
+    const browsePathInput = document.getElementById('browsePathInput');
+    const browseBreadcrumb = document.getElementById('browseBreadcrumb');
+    const browseList = document.getElementById('browseList');
     const pathHistoryEl = document.getElementById('pathHistory');
     const autoRefreshSelect = document.getElementById('autoRefreshSelect');
     const toastEl = document.getElementById('toast');
@@ -210,7 +232,7 @@
     }
 
     function setButtonsDisabled(disabled) {
-      [refreshBtn, logBtn, scanBtn, rebuildBtn, scanPathBtn, refreshSettingsBtn, saveSettingsBtn, changePasswordBtn, refreshSourcesBtn, saveSourcesBtn, addSourceBtn, strmHealthBtn].forEach(btn => btn && (btn.disabled = disabled));
+      [refreshBtn, logBtn, scanBtn, rebuildBtn, scanPathBtn, browseRootBtn, useBrowsePathBtn, browsePathBtn, refreshSettingsBtn, saveSettingsBtn, changePasswordBtn, refreshSourcesBtn, saveSourcesBtn, addSourceBtn, strmHealthBtn].forEach(btn => btn && (btn.disabled = disabled));
     }
 
     function renderStatus(data) {
@@ -332,6 +354,54 @@
       return data;
     }
 
+    async function browseAlist(path='/') {
+      const data = await fetchJson('/api/admin/xstrm/alist/list?path=' + encodeURIComponent(path));
+      currentBrowsePath = data.path || path || '/';
+      browsePathInput.value = currentBrowsePath;
+      renderBrowseBreadcrumb(currentBrowsePath);
+      renderBrowseList(data.items || []);
+      return data;
+    }
+
+    function renderBrowseBreadcrumb(path) {
+      const parts = String(path || '/').split('/').filter(Boolean);
+      const crumbs = ['/'];
+      let acc = '';
+      parts.forEach(p => { acc += '/' + p; crumbs.push(acc); });
+      browseBreadcrumb.innerHTML = '';
+      crumbs.forEach((p, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'secondary';
+        btn.textContent = idx === 0 ? '/' : p.split('/').pop();
+        btn.onclick = () => browseAlist(p).catch(e => showToast('浏览失败：' + e.message, 'bad'));
+        browseBreadcrumb.appendChild(btn);
+      });
+    }
+
+    function renderBrowseList(items) {
+      if (!items.length) {
+        browseList.innerHTML = '<span class="muted">当前目录为空</span>';
+        return;
+      }
+      browseList.innerHTML = items.map(item => `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 4px;border-bottom:1px solid #374151;">
+          <div>
+            <div>${item.is_dir ? '📁' : '🎞️'} <strong>${escapeHtml(item.name)}</strong></div>
+            <div class="muted">${escapeHtml(item.path)}</div>
+          </div>
+          <div class="actions">
+            ${item.is_dir ? `<button class="secondary" data-browse-path="${escapeHtml(item.path)}">进入</button><button class="secondary" data-use-path="${escapeHtml(item.path)}">选中</button>` : `<button class="secondary" data-use-path="${escapeHtml(item.path)}">填入</button>`}
+          </div>
+        </div>
+      `).join('');
+      browseList.querySelectorAll('[data-browse-path]').forEach(btn => {
+        btn.onclick = () => browseAlist(btn.dataset.browsePath).catch(e => showToast('浏览失败：' + e.message, 'bad'));
+      });
+      browseList.querySelectorAll('[data-use-path]').forEach(btn => {
+        btn.onclick = () => { pathInput.value = btn.dataset.usePath; savePathHistory(btn.dataset.usePath); showToast('已填入扫描目录'); };
+      });
+    }
+
     async function saveSources() {
       setButtonsDisabled(true);
       try {
@@ -377,8 +447,15 @@
     };
 
     addSourceBtn.onclick = () => {
-      sourcesData.push({scan_path: '/mnt/115/', output_prefix: '/115/'});
+      sourcesData.push({scan_mode: 'alist', scan_path: '/mnt/115/', output_prefix: '/115/'});
       renderSources();
+    };
+    browseRootBtn.onclick = () => browseAlist('/').catch(e => showToast('浏览失败：' + e.message, 'bad'));
+    browsePathBtn.onclick = () => browseAlist((browsePathInput.value || '/').trim() || '/').catch(e => showToast('浏览失败：' + e.message, 'bad'));
+    useBrowsePathBtn.onclick = () => {
+      pathInput.value = currentBrowsePath || '/';
+      savePathHistory(pathInput.value);
+      showToast('已填入当前浏览目录');
     };
     refreshSettingsBtn.onclick = () => loadSettings().then(() => showToast('已读取 nginx 配置')).catch(e => showToast('读取配置失败：' + e.message, 'bad'));
     saveSettingsBtn.onclick = () => saveSettings();
@@ -513,7 +590,7 @@
     autoRefreshSelect.onchange = () => setAutoRefresh(Number(autoRefreshSelect.value));
 
     renderPathHistory();
-    Promise.all([loadStatus(), loadLogs(), loadSettings(), loadSources()]).then(() => {
+    Promise.all([loadStatus(), loadLogs(), loadSettings(), loadSources(), browseAlist('/')]).then(() => {
       setAutoRefresh(Number(autoRefreshSelect.value));
     }).catch(err => {
       statusEl.innerHTML = '<div class="bad">状态加载失败：' + escapeHtml(err.message) + '</div>';
