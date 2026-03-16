@@ -435,11 +435,24 @@ def run_all_sources(config: dict):
     return totals
 
 
+def logical_prefix_from_scan_path(scan_path: str, media_mount_paths: list[str]) -> str:
+    scan_path = (scan_path or '').rstrip('/') or '/'
+    for mount in media_mount_paths or []:
+        mount = (mount or '').rstrip('/')
+        if mount and scan_path == mount:
+            return '/'
+        if mount and scan_path.startswith(mount + '/'):
+            return scan_path[len(mount):] or '/'
+    return scan_path
+
+
 def build_source_from_input(config: dict, source_input: str):
     src = find_matching_source(config, source_input)
     if src:
         return src
-    return {'scan_mode': 'alist', 'scan_path': source_input, 'output_prefix': source_input, 'library_type': 'custom', 'watch_depth': 1}
+    mount_paths = (config.get('emby2alist', {}) or {}).get('media_mount_path', []) or []
+    output_prefix = logical_prefix_from_scan_path(source_input, mount_paths)
+    return {'scan_mode': 'alist', 'scan_path': source_input, 'output_prefix': output_prefix, 'library_type': 'custom', 'watch_depth': 1}
 
 
 def parse_args():
