@@ -328,8 +328,9 @@ def run_source(config: dict, src: dict):
         'generated': len(generated),
         'skipped_existing_file': skipped_existing_file,
         'skipped_state_only': skipped_state_only,
+        'pruned_state_entries': pruned_state_entries,
     }
-    print(f"统计: 发现 {total_found} 个，新增 {len(generated)} 个，跳过已存在文件 {skipped_existing_file} 个，状态跳过 {skipped_state_only} 个")
+    print(f"统计: 发现 {total_found} 个，新增 {len(generated)} 个，跳过已存在文件 {skipped_existing_file} 个，状态跳过 {skipped_state_only} 个，清理失效状态 {pruned_state_entries} 个")
     return summary
 
 
