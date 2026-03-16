@@ -1,5 +1,7 @@
 # xstrm-suite
 
+[English](./README.md) | [中文](./README.zh-CN.md)
+
 STRM file management system for Emby + AList integration. Automatically generates `.strm` files that point to AList-hosted media files, enabling Emby to play directly from AList storage.
 
 ## Features
