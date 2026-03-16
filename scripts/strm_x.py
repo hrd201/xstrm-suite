@@ -306,12 +306,15 @@ def run_source(config: dict, src: dict):
     skipped_state_only = 0
     for full_path in files:
         media_path = map_scan_to_media(scan_path, output_prefix, full_path)
-        if strm_exists(output_root, media_path):
+        target_file = normalize_output_path(output_root, media_path)
+        if target_file.exists():
             skipped_existing_file += 1
             continue
-        if incremental_only and media_path in existing_state:
-            skipped_state_only += 1
-            continue
+        # 以最终 .strm 文件是否存在为准，而不是只看历史状态。
+        # 这样即使状态文件里记过“已生成”，但目标 .strm 被手工删除/丢失，
+        # 也会自动补回，而不是被 incremental_only 误跳过。
+        if incremental_only and media_path in existing_state and not target_file.exists():
+            existing_state.discard(media_path)
         target_path = resolve_strm_target(config, media_path, full_path)
         generate_one(output_root, media_path, target_path)
         generated.append(media_path)
