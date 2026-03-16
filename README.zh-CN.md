@@ -309,7 +309,7 @@ python3 -m cmd.cli --config
 
 ## 致谢
 
-特别感谢 [bpking1](https://github.com/bpking1) 创建了 [embyExternalUrl](https://github.com/bpking1/embyExternalUrl)，本项目受其启发而诞生。
+本项目基于 [bpking1](https://github.com/bpking1) 的 [embyExternalUrl](https://github.com/bpking1/embyExternalUrl) 项目 [emby2alist 分支](https://github.com/bpking1/embyExternalUrl/tree/emby2alist) 增改而诞生。
 
 ## 许可证
 
