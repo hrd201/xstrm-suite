@@ -4,6 +4,7 @@ import subprocess
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib import request as urlrequest, error as urlerror
 from urllib.parse import parse_qs, urlparse
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -82,6 +83,61 @@ def load_nginx_profile(profile_root: str | None = None) -> tuple[bool, dict | st
         return False, '解析结果不是有效 JSON'
 
 
+def alist_list_dir(path: str) -> tuple[bool, dict | str]:
+    cfg = load_sync_config()
+    alist = cfg.get('alist', {}) or {}
+    base_url = (alist.get('base_url') or '').rstrip('/')
+    token = (alist.get('token') or '').strip()
+    if not base_url:
+        return False, 'alist.base_url 未配置'
+    if not token:
+        return False, 'alist.token 未配置'
+    target_path = (path or '/').strip() or '/'
+    if not target_path.startswith('/'):
+        target_path = '/' + target_path
+    req = urlrequest.Request(base_url + '/api/fs/list', method='POST')
+    req.add_header('Content-Type', 'application/json')
+    req.add_header('Authorization', token)
+    body = json.dumps({
+        'path': target_path,
+        'password': '',
+        'page': 1,
+        'per_page': 0,
+        'refresh': False,
+    }, ensure_ascii=False).encode('utf-8')
+    try:
+        with urlrequest.urlopen(req, data=body, timeout=30) as resp:
+            raw = resp.read().decode('utf-8', 'ignore')
+    except urlerror.HTTPError as e:
+        raw = e.read().decode('utf-8', 'ignore') if e.fp else ''
+        return False, f'AList API HTTP {e.code}: {raw[:200]}'
+    except Exception as e:
+        return False, f'AList API 请求失败: {e}'
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return False, f'AList API 返回非 JSON: {raw[:200]}'
+    if data.get('code') != 200:
+        return False, data.get('message') or data.get('msg') or 'AList API 错误'
+    content = ((data.get('data') or {}).get('content') or [])
+    items = []
+    for item in content:
+        name = item.get('name') or ''
+        if not name:
+            continue
+        child = f"{target_path.rstrip('/')}/{name}" if target_path != '/' else f'/{name}'
+        is_dir = bool(item.get('is_dir')) or int(item.get('type') or 0) == 1
+        items.append({
+            'name': name,
+            'path': child,
+            'is_dir': is_dir,
+            'size': item.get('size'),
+            'modified': item.get('modified') or item.get('updated_at') or item.get('updated'),
+        })
+    items.sort(key=lambda x: (not x['is_dir'], x['name']))
+    return True, {'path': target_path, 'items': items}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = 'xstrm-admin-api/0.1'
 
@@ -143,6 +199,13 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == '/api/admin/xstrm/sources':
             cfg = load_sync_config()
             return self._json(200, {'ok': True, 'sources': cfg.get('sources', [])}, write_body=write_body)
+        if parsed.path == '/api/admin/xstrm/alist/list':
+            query = parse_qs(parsed.query)
+            path = (query.get('path') or ['/'])[0]
+            ok, payload = alist_list_dir(path)
+            if ok:
+                return self._json(200, {'ok': True, **payload}, write_body=write_body)
+            return self._json(500, {'ok': False, 'error': payload, 'path': path}, write_body=write_body)
         if parsed.path == '/api/admin/xstrm/settings':
             cfg = load_sync_config()
             selected_mode = cfg.get('strm_mode', 'auto')
