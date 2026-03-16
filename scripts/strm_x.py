@@ -299,6 +299,7 @@ def run_source(config: dict, src: dict):
     files = walk_local(scan_path)
     total_found = len(files)
     print(f'发现媒体文件 {total_found} 个')
+    pruned_state_entries = prune_missing_state_entries(state, source_key, output_root)
     existing_state = set(state['sources'].get(source_key, {}).get('generated', []))
     incremental_only = config.get('scan', {}).get('incremental_only', True)
     generated = []
