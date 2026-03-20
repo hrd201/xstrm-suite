@@ -6,19 +6,19 @@ emby:
   api_key: YOUR_EMBY_API_KEY
 alist:
   scheme: http
-  host: 172.17.0.1
+  host: YOUR_ALIST_HOST
   port: 5388
   token: YOUR_ALIST_TOKEN
-  public_addr: http://your-domain.example.com:5388
+  public_addr: https://your-alist.example.com:5388
   sign_enable: false
   sign_expire_time: 12
 nginx:
-  server_name: default
+  server_name: example.com
   http_port: 8091
   https_enabled: true
   https_port: 8095
-  ssl_cert: /www/server/panel/vhost/cert/your-domain.example.com/fullchain.pem
-  ssl_key: /www/server/panel/vhost/cert/your-domain.example.com/privkey.pem
+  ssl_cert: /path/to/fullchain.pem
+  ssl_key: /path/to/privkey.pem
   backend_scheme: http
   backend_port: 18095
 mount:

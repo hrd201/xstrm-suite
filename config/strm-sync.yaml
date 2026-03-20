@@ -4,7 +4,7 @@ mode: mirror
 alist:
   base_url: http://YOUR_ALIST_HOST:5388
   token: YOUR_ALIST_TOKEN
-  public_url: http://your-domain.example.com:5388
+  public_url: https://your-alist.example.com:5388
 scan:
   default_depth: 1
   incremental_only: true
