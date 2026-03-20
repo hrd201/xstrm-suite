@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Extended media format support**: Expanded scan whitelist for more video and audio extensions.
+  - Video: `.mov`, `.wmv`, `.flv`, `.webm`, `.m4v`, `.mpg`, `.mpeg`, `.rmvb`, `.iso`
+  - Audio: `.mp3`, `.m4a`, `.flac`, `.aac`, `.ape`, `.wav`, `.ogg`, `.opus`, `.wma`, `.alac`, `.aiff`, `.aif`, `.amr`
+- **Template sync update**: `config/templates/strm-sync.yaml.template` now includes the same extension set to keep fresh deployments consistent.
+
+### Fixed
+- **Scanner extension loading**: `src/scanner.py` now respects `scan.include_ext` from configuration instead of relying only on the built-in constant set.
+- **Music directory scanning**: Fixed the issue where audio extensions could be configured but were not actually picked up during scans, allowing paths like `/mnt/115/音乐` to detect audio media correctly.
+
 ## [0.2.0] - 2026-03-16
 
 ### Added
