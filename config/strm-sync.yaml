@@ -14,6 +14,28 @@ scan:
   - .avi
   - .ts
   - .m2ts
+  - .mov
+  - .wmv
+  - .flv
+  - .webm
+  - .m4v
+  - .mpg
+  - .mpeg
+  - .rmvb
+  - .iso
+  - .mp3
+  - .m4a
+  - .flac
+  - .aac
+  - .ape
+  - .wav
+  - .ogg
+  - .opus
+  - .wma
+  - .alac
+  - .aiff
+  - .aif
+  - .amr
 sources:
 - path: /115/电影
   library_type: movie

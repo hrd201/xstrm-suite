@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .config import MEDIA_EXTS, normalize_source
+from .config import get_media_exts, normalize_source
 from .state import (
     load_state,
     save_state,
@@ -26,6 +26,7 @@ def walk_alist(config: dict, root_path: str) -> List[str]:
         List of absolute media file paths
     """
     root_path = root_path.rstrip('/') or '/'
+    media_exts = get_media_exts(config)
     found = []
     stack = [root_path]
     while stack:
@@ -46,7 +47,7 @@ def walk_alist(config: dict, root_path: str) -> List[str]:
             is_dir = bool(item.get('is_dir')) or int(item.get('type') or 0) == 1
             if is_dir:
                 stack.append(child)
-            elif Path(name).suffix.lower() in MEDIA_EXTS:
+            elif Path(name).suffix.lower() in media_exts:
                 found.append(child)
     return sorted(found)
 
