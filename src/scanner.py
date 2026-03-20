@@ -159,12 +159,24 @@ def run_source(config: dict, src: dict) -> dict:
     for full_path in files:
         media_path = map_scan_to_media(scan_path, output_prefix, full_path)
         target_file = normalize_output_path(output_root, media_path)
-        if target_file.exists():
-            skipped_existing_file += 1
-            continue
-        if incremental_only and media_path in existing_state and not target_file.exists():
-            existing_state.discard(media_path)
         target_path = resolve_strm_target(config, media_path, full_path)
+
+        if target_file.exists():
+            try:
+                current_content = target_file.read_text(encoding='utf-8').strip()
+            except Exception:
+                current_content = None
+            if current_content == target_path:
+                skipped_existing_file += 1
+                continue
+
+        if incremental_only and media_path in existing_state and not target_file.exists():
+            skipped_state_only += 1
+            continue
+
+        if media_path in existing_state and not target_file.exists():
+            existing_state.discard(media_path)
+
         generate_one(output_root, media_path, target_path)
         generated.append(media_path)
 
