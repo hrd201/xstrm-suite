@@ -88,8 +88,8 @@
 
 宿主机证书路径：
 
-- `/www/server/panel/vhost/cert/your-domain.example.com/fullchain.pem`
-- `/www/server/panel/vhost/cert/your-domain.example.com/privkey.pem`
+- `/path/to/fullchain.pem`
+- `/path/to/privkey.pem`
 
 容器内实际使用路径：
 

@@ -18,7 +18,7 @@ const alistSignEnable = false;
 const alistSignExpireTime = 12;
 
 // alist 公网地址,用于需要 alist server 代理流量的情况,按需填写
-const alistPublicAddr = "http://your-domain.example.com:5388";
+const alistPublicAddr = "https://your-alist.example.com:5388";
 
 // 指定客户端自己请求并获取 alist 直链的规则,代码优先级在 redirectStrmLastLinkRule 之后
 // 特殊情况使用,则此处必须使用域名且公网畅通,用不着请保持默认
