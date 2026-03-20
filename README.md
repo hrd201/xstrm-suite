@@ -24,6 +24,8 @@ xstrm-suite is designed to solve common challenges when using Emby with cloud st
 - **Incremental Sync**: Only generates missing STRM files, skips existing ones
 - **State Management**: Tracks generated files to avoid duplicates
 - **Flexible Scanning**: Scan all sources or specify individual directories
+- **Extended Media Extension Support**: Supports common video and audio formats including `.mp4`, `.mkv`, `.mov`, `.webm`, `.mp3`, `.m4a`, `.flac`, `.aac`, `.ape`, `.wav`, `.ogg`, and more
+- **Configurable Extension Whitelist**: Scanner reads `scan.include_ext` from configuration so formats can be adjusted without code changes
 - **HTTPS Support**: Full HTTPS configuration with Let's Encrypt or custom certificates
 
 ## Architecture
@@ -128,6 +130,19 @@ scan:
     - .avi
     - .ts
     - .m2ts
+    - .mov
+    - .wmv
+    - .flv
+    - .webm
+    - .m4v
+    - .mp3
+    - .m4a
+    - .flac
+    - .aac
+    - .ape
+    - .wav
+    - .ogg
+    - .opus
 sources:
   - path: /115/电影
     library_type: movie
@@ -234,6 +249,15 @@ STRM File:     /emby-strm/115/电影/角斗士2 Gladiator II/GladiatorII.strm
                ↓ (content)
 STRM Content:  /115/电影/角斗士2 Gladiator II/GladiatorII.mkv
 ```
+
+### Supported Media Extensions
+
+By default, the scanner supports a broad set of common video and audio extensions.
+You can customize them through `scan.include_ext` in `config/strm-sync.yaml`.
+
+Typical supported formats include:
+- Video: `.mp4`, `.mkv`, `.avi`, `.ts`, `.m2ts`, `.mov`, `.wmv`, `.flv`, `.webm`, `.m4v`, `.mpg`, `.mpeg`, `.rmvb`, `.iso`
+- Audio: `.mp3`, `.m4a`, `.flac`, `.aac`, `.ape`, `.wav`, `.ogg`, `.opus`, `.wma`, `.alac`, `.aiff`, `.aif`, `.amr`
 
 ### Incremental Mode
 

@@ -24,6 +24,8 @@ xstrm-suite 旨在解决 Emby 配合网盘使用时遇到的常见问题：
 - **增量同步**：仅生成缺失的 STRM 文件，跳过已存在的
 - **状态管理**：跟踪已生成的文件以避免重复
 - **灵活扫描**：扫描所有来源或指定单独目录
+- **扩展媒体格式支持**：支持常见视频和音频格式，包括 `.mp4`、`.mkv`、`.mov`、`.webm`、`.mp3`、`.m4a`、`.flac`、`.aac`、`.ape`、`.wav`、`.ogg` 等
+- **可配置扩展名白名单**：扫描器会读取 `scan.include_ext` 配置，无需改代码即可调整支持格式
 - **HTTPS 支持**：支持 Let's Encrypt 或自定义证书的完整 HTTPS 配置
 
 ## 架构
@@ -128,6 +130,19 @@ scan:
     - .avi
     - .ts
     - .m2ts
+    - .mov
+    - .wmv
+    - .flv
+    - .webm
+    - .m4v
+    - .mp3
+    - .m4a
+    - .flac
+    - .aac
+    - .ape
+    - .wav
+    - .ogg
+    - .opus
 sources:
   - path: /115/电影
     library_type: movie
@@ -234,6 +249,15 @@ STRM 文件:     /emby-strm/115/电影/角斗士2 Gladiator II/GladiatorII.strm
                ↓ (内容)
 STRM 内容:     /115/电影/角斗士2 Gladiator II/GladiatorII.mkv
 ```
+
+### 支持的媒体扩展名
+
+默认情况下，扫描器支持一组较完整的常见视频与音频扩展名。
+你也可以通过 `config/strm-sync.yaml` 中的 `scan.include_ext` 自定义支持列表。
+
+常见支持格式包括：
+- 视频：`.mp4`、`.mkv`、`.avi`、`.ts`、`.m2ts`、`.mov`、`.wmv`、`.flv`、`.webm`、`.m4v`、`.mpg`、`.mpeg`、`.rmvb`、`.iso`
+- 音频：`.mp3`、`.m4a`、`.flac`、`.aac`、`.ape`、`.wav`、`.ogg`、`.opus`、`.wma`、`.alac`、`.aiff`、`.aif`、`.amr`
 
 ### 增量模式
 
