@@ -10,7 +10,26 @@ EMBY2ALIST_CONSTANT = BASE_DIR / 'emby2alist' / 'conf.d' / 'constant.js'
 EMBY2ALIST_MOUNT_CONFIG = BASE_DIR / 'emby2alist' / 'conf.d' / 'config' / 'constant-mount.js'
 DEFAULT_NGINX_PROFILE_ROOT = BASE_DIR / 'emby2alist'
 
-MEDIA_EXTS = {'.mp4', '.mkv', '.avi', '.ts', '.m2ts', '.mov', '.wmv', '.flv'}
+MEDIA_EXTS = {
+    '.mp4', '.mkv', '.avi', '.ts', '.m2ts', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.mpg', '.mpeg', '.rmvb', '.iso',
+    '.mp3', '.m4a', '.flac', '.aac', '.ape', '.wav', '.ogg', '.opus', '.wma', '.alac', '.aiff', '.aif', '.amr',
+}
+
+
+def get_media_exts(config: dict) -> set[str]:
+    """Get normalized media extensions from config, falling back to defaults."""
+    include_ext = ((config.get('scan') or {}).get('include_ext') or [])
+    exts = set()
+    for ext in include_ext:
+        if not ext:
+            continue
+        ext = str(ext).strip().lower()
+        if not ext:
+            continue
+        if not ext.startswith('.'):
+            ext = f'.{ext}'
+        exts.add(ext)
+    return exts or set(MEDIA_EXTS)
 
 
 def load_yaml(path: Path) -> dict:
