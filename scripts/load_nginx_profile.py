@@ -69,7 +69,7 @@ def load_profile(root: Path) -> dict:
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Load emby2alist nginx profile')
-    parser.add_argument('--root', default='/root/emby2Alist/nginx', help='nginx root containing conf.d/')
+    parser.add_argument('--root', default='/home/hrd/.openclaw/workspace/projects/xstrm-suite/nginx', help='nginx root containing conf.d/')
     return parser.parse_args()
 
 

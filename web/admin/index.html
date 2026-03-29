@@ -106,7 +106,7 @@
       <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-bottom:12px;">
         <div>
           <label class="muted">nginx 配置根目录</label>
-          <input id="profileRootInput" placeholder="例如 /root/emby2Alist/nginx" />
+          <input id="profileRootInput" placeholder="例如 /home/hrd/.openclaw/workspace/projects/xstrm-suite/nginx" />
         </div>
         <div>
           <label class="muted">strm 输出模式</label>
@@ -309,7 +309,7 @@
     async function loadSettings() {
       const data = await fetchJson('/api/admin/xstrm/settings');
       const s = data.settings || {};
-      profileRootInput.value = s.profile_root || '/root/emby2Alist/nginx';
+      profileRootInput.value = s.profile_root || '/home/hrd/.openclaw/workspace/projects/xstrm-suite/nginx';
       strmModeSelect.value = s.strm_mode || 'auto';
       outputRootInput.value = s.output_root || '/emby-strm';
       renderSettingsSummary(s, data.profile, data.profile_error || null);

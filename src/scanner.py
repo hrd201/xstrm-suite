@@ -1,5 +1,7 @@
 """STRM scanner - core scanning logic."""
 import sys
+import time
+import random
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -29,8 +31,10 @@ def walk_alist(config: dict, root_path: str) -> List[str]:
     media_exts = get_media_exts(config)
     found = []
     stack = [root_path]
+    scanned_dirs = 0
     while stack:
         current = stack.pop()
+        print(f'[scan] dir#{scanned_dirs + 1} current={current} pending={len(stack)}', flush=True)
         data = alist_request(config, '/api/fs/list', {
             'path': current,
             'password': '',
@@ -38,6 +42,10 @@ def walk_alist(config: dict, root_path: str) -> List[str]:
             'per_page': 0,
             'refresh': False,
         })
+        scanned_dirs += 1
+        time.sleep(random.uniform(1.5, 3.5))
+        if scanned_dirs % 10 == 0:
+            time.sleep(random.uniform(5.0, 10.0))
         content = ((data.get('data') or {}).get('content') or [])
         for item in content:
             name = item.get('name') or ''
