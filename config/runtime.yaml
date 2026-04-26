@@ -2,23 +2,23 @@ project:
   name: xstrm-suite
   install_root: /opt/xstrm-suite
 emby:
-  host: http://YOUR_EMBY_HOST:8096
-  api_key: YOUR_EMBY_API_KEY
+  host: http://127.0.0.1:8096
+  api_key: 57650d61c22f42b28feb7d489ed412f4
 alist:
   scheme: http
-  host: YOUR_ALIST_HOST
-  port: 5388
-  token: YOUR_ALIST_TOKEN
-  public_addr: https://your-alist.example.com:5388
+  host: 127.0.0.1
+  port: 5244
+  token: alist-3d5b925c-1059-48d1-9c03-bc3c8566c7d5PrhmxqEYeP0LPa5s138UOUEmOPserJtFr9jsF7gxc1tt4UzUIuBNJiJBYkHkiOci
+  public_addr: http://127.0.0.1:5244
   sign_enable: false
   sign_expire_time: 12
 nginx:
-  server_name: example.com
+  server_name: nf.tmdai.org
   http_port: 8091
   https_enabled: true
   https_port: 8095
-  ssl_cert: /path/to/fullchain.pem
-  ssl_key: /path/to/privkey.pem
+  ssl_cert: /www/server/panel/vhost/cert/nf.tmdai.org/fullchain.pem
+  ssl_key: /www/server/panel/vhost/cert/nf.tmdai.org/privkey.pem
   backend_scheme: http
   backend_port: 18095
 mount:

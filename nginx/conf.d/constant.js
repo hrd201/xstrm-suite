@@ -11,8 +11,8 @@ import nginxConfig from "./config/constant-nginx.js";
 
 // 必填项,根据实际情况修改下面的设置
 
-const embyHost = "http://YOUR_EMBY_HOST:8096";
-const embyApiKey = "YOUR_EMBY_API_KEY";
+const embyHost = "http://127.0.0.1:8096";
+const embyApiKey = "57650d61c22f42b28feb7d489ed412f4";
 const mediaMountPath = ["/mnt"];
 
 function getEmbyHost(r) {

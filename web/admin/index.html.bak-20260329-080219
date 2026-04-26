@@ -106,7 +106,7 @@
       <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-bottom:12px;">
         <div>
           <label class="muted">nginx 配置根目录</label>
-          <input id="profileRootInput" placeholder="例如 /opt/xstrm-suite/nginx" />
+          <input id="profileRootInput" placeholder="例如 /root/emby2Alist/nginx" />
         </div>
         <div>
           <label class="muted">strm 输出模式</label>
@@ -309,7 +309,7 @@
     async function loadSettings() {
       const data = await fetchJson('/api/admin/xstrm/settings');
       const s = data.settings || {};
-      profileRootInput.value = s.profile_root || '/opt/xstrm-suite/nginx';
+      profileRootInput.value = s.profile_root || '/root/emby2Alist/nginx';
       strmModeSelect.value = s.strm_mode || 'auto';
       outputRootInput.value = s.output_root || '/emby-strm';
       renderSettingsSummary(s, data.profile, data.profile_error || null);
@@ -359,17 +359,7 @@
       currentBrowsePath = data.path || path || '/';
       browsePathInput.value = currentBrowsePath;
       renderBrowseBreadcrumb(currentBrowsePath);
-      const items = data.items || [];
-      // 目录在前，同类内按修改日期从新到旧排列
-      items.sort((a, b) => {
-        if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
-        const ma = a.modified || '';
-        const mb = b.modified || '';
-        if (mb > ma) return 1;
-        if (mb < ma) return -1;
-        return 0;
-      });
-      renderBrowseList(items);
+      renderBrowseList(data.items || []);
       return data;
     }
 
@@ -398,7 +388,6 @@
           <div>
             <div>${item.is_dir ? '📁' : '🎞️'} <strong>${escapeHtml(item.name)}</strong></div>
             <div class="muted">${escapeHtml(item.path)}</div>
-            ${item.modified ? `<div class="muted" style="font-size:11px;">🕐 ${escapeHtml((item.modified || '').slice(0, 16).replace('T', ' '))}</div>` : ''}
           </div>
           <div class="actions">
             ${item.is_dir ? `<button class="secondary" data-browse-path="${escapeHtml(item.path)}">进入</button><button class="secondary" data-use-path="${escapeHtml(item.path)}">选中</button>` : `<button class="secondary" data-use-path="${escapeHtml(item.path)}">填入</button>`}

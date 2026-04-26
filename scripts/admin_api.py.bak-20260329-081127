@@ -73,7 +73,7 @@ def derive_sources_preview(profile: dict, resolved_mode: str) -> tuple[list[dict
     return data.get('sources', []), data.get('expected_target_example')
 
 def load_nginx_profile(profile_root: str | None = None) -> tuple[bool, dict | str]:
-    target = profile_root or '/opt/xstrm-suite/nginx'
+    target = profile_root or '/root/emby2Alist/nginx'
     code, out, err = run_cmd(['python3', str(SCRIPTS_DIR / 'load_nginx_profile.py'), '--root', target])
     if code != 0:
         return False, (err or out or '解析 nginx 配置失败').strip()
@@ -134,9 +134,7 @@ def alist_list_dir(path: str) -> tuple[bool, dict | str]:
             'size': item.get('size'),
             'modified': item.get('modified') or item.get('updated_at') or item.get('updated'),
         })
-    # 先按修改日期降序（新→旧），再按类型稳定排序（目录在前）
-    items.sort(key=lambda x: x.get('modified') or '', reverse=True)
-    items.sort(key=lambda x: not x['is_dir'])
+    items.sort(key=lambda x: (not x['is_dir'], x['name']))
     return True, {'path': target_path, 'items': items}
 
 
@@ -220,7 +218,7 @@ class Handler(BaseHTTPRequestHandler):
                     'strm_mode': selected_mode,
                     'resolved_strm_mode': resolved_mode,
                     'output_root': cfg.get('output_root', '/emby-strm'),
-                    'profile_root': cfg.get('emby2alist', {}).get('profile_root', '/opt/xstrm-suite/nginx'),
+                    'profile_root': cfg.get('emby2alist', {}).get('profile_root', '/root/emby2Alist/nginx'),
                     'media_mount_path': cfg.get('emby2alist', {}).get('media_mount_path', []),
                     'derived_sources': derived_sources,
                     'expected_target_example': expected_example,
@@ -297,7 +295,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if parsed.path == '/api/admin/xstrm/settings':
             strm_mode = (data.get('strm_mode') or 'auto').strip()
-            profile_root = (data.get('profile_root') or '/opt/xstrm-suite/nginx').strip()
+            profile_root = (data.get('profile_root') or '/root/emby2Alist/nginx').strip()
             output_root = (data.get('output_root') or '/emby-strm').strip()
             if strm_mode not in ('auto', 'logical_path', 'local_path'):
                 return self._json(400, {'ok': False, 'error': 'invalid strm_mode'})

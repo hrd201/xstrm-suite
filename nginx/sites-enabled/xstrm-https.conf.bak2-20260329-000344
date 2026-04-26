@@ -2,8 +2,8 @@ server {
     listen 8095 ssl;
     server_name nf.tmdai.org;
 
-    ssl_certificate /etc/nginx/cert/fullchain.pem;
-    ssl_certificate_key /etc/nginx/cert/privkey.pem;
+    ssl_certificate /www/server/panel/vhost/cert/nf.tmdai.org/fullchain.pem;
+    ssl_certificate_key /www/server/panel/vhost/cert/nf.tmdai.org/privkey.pem;
 
     client_max_body_size 0;
 
@@ -19,21 +19,21 @@ server {
         auth_basic "xstrm admin";
         auth_basic_user_file /etc/nginx/conf.d/.htpasswd-xstrm-admin;
         proxy_pass http://127.0.0.1:18095/admin/xstrm/;
-        include /opt/xstrm-suite/nginx/conf.d/includes/proxy-header.conf;
+        include /home/hrd/.openclaw/workspace/projects/xstrm-suite/nginx/conf.d/includes/proxy-header.conf;
     }
 
     location = /admin/xstrm/index.html {
         auth_basic "xstrm admin";
         auth_basic_user_file /etc/nginx/conf.d/.htpasswd-xstrm-admin;
         proxy_pass http://127.0.0.1:18095/admin/xstrm/index.html;
-        include /opt/xstrm-suite/nginx/conf.d/includes/proxy-header.conf;
+        include /home/hrd/.openclaw/workspace/projects/xstrm-suite/nginx/conf.d/includes/proxy-header.conf;
     }
 
     location /api/admin/xstrm/ {
         auth_basic "xstrm admin";
         auth_basic_user_file /etc/nginx/conf.d/.htpasswd-xstrm-admin;
         proxy_pass http://127.0.0.1:18095;
-        include /opt/xstrm-suite/nginx/conf.d/includes/proxy-header.conf;
+        include /home/hrd/.openclaw/workspace/projects/xstrm-suite/nginx/conf.d/includes/proxy-header.conf;
     }
 
     location / {

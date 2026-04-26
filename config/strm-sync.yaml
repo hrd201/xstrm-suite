@@ -2,62 +2,70 @@ output_root: /emby-strm
 state_file: /opt/xstrm-suite/data/strm-sync-state.json
 mode: mirror
 alist:
-  base_url: http://YOUR_ALIST_HOST:5388
-  token: YOUR_ALIST_TOKEN
-  public_url: https://your-alist.example.com:5388
+  base_url: http://127.0.0.1:5244
+  token: alist-3d5b925c-1059-48d1-9c03-bc3c8566c7d5PrhmxqEYeP0LPa5s138UOUEmOPserJtFr9jsF7gxc1tt4UzUIuBNJiJBYkHkiOci
+  public_url: http://127.0.0.1:5244
 scan:
   default_depth: 1
   incremental_only: true
+  subtitle_sync: true
+  subtitle_exts:
+    - .srt
+    - .ass
+    - .ssa
+    - .sub
+    - .idx
+    - .vtt
+    - .smi
+    - .sup
+    - .pgs
   include_ext:
-  - .mp4
-  - .mkv
-  - .avi
-  - .ts
-  - .m2ts
-  - .mov
-  - .wmv
-  - .flv
-  - .webm
-  - .m4v
-  - .mpg
-  - .mpeg
-  - .rmvb
-  - .iso
-  - .mp3
-  - .m4a
-  - .flac
-  - .aac
-  - .ape
-  - .wav
-  - .ogg
-  - .opus
-  - .wma
-  - .alac
-  - .aiff
-  - .aif
-  - .amr
+    - .mp4
+    - .mkv
+    - .avi
+    - .ts
+    - .m2ts
+    - .mov
+    - .wmv
+    - .flv
+    - .webm
+    - .m4v
+    - .mpg
+    - .mpeg
+    - .rmvb
+    - .iso
+    - .mp3
+    - .m4a
+    - .flac
+    - .aac
+    - .ape
+    - .wav
+    - .ogg
+    - .opus
+    - .wma
+    - .alac
+    - .aiff
+    - .aif
+    - .amr
 sources:
 - path: /115/电影
+  scan_mode: alist
   library_type: movie
   watch_depth: 1
   output_prefix: /115/电影
   scan_path: /115/电影
-  scan_mode: alist
 - path: /115/剧集
+  scan_mode: alist
   library_type: series
   watch_depth: 1
   output_prefix: /115/剧集
   scan_path: /115/剧集
-  scan_mode: alist
 - path: /115/动画
+  scan_mode: alist
   library_type: series
   watch_depth: 1
   output_prefix: /115/动画
   scan_path: /115/动画
-  scan_mode: alist
 emby2alist:
   media_mount_path:
-  - /mnt
-  profile_root: /root/.openclaw/workspace/projects/xstrm-suite/emby2alist
-strm_mode: auto
-resolved_strm_mode: logical_path
+    - /mnt

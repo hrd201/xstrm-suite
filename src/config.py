@@ -15,6 +15,10 @@ MEDIA_EXTS = {
     '.mp3', '.m4a', '.flac', '.aac', '.ape', '.wav', '.ogg', '.opus', '.wma', '.alac', '.aiff', '.aif', '.amr',
 }
 
+SUBTITLE_EXTS = {
+    '.srt', '.ass', '.ssa', '.sub', '.idx', '.vtt', '.smi', '.sup', '.pgs',
+}
+
 
 def get_media_exts(config: dict) -> set[str]:
     """Get normalized media extensions from config, falling back to defaults."""
@@ -121,6 +125,8 @@ def ensure_config(config: dict) -> dict:
     config.setdefault('scan', {})
     config['scan'].setdefault('incremental_only', True)
     config['scan'].setdefault('include_ext', sorted(MEDIA_EXTS))
+    config['scan'].setdefault('subtitle_sync', True)
+    config['scan'].setdefault('subtitle_exts', sorted(SUBTITLE_EXTS))
     config.setdefault('emby2alist', {})
     config.setdefault('alist', {})
 

@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  xstrm-nginx:
+    image: nginx:stable
+    container_name: xstrm-nginx
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - /home/hrd/.openclaw/workspace/projects/xstrm-suite/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /home/hrd/.openclaw/workspace/projects/xstrm-suite/nginx/conf.d:/etc/nginx/conf.d:ro
+      - /home/hrd/.openclaw/workspace/projects/xstrm-suite/nginx/conf.d/includes:/opt/xstrm-suite/nginx/conf.d/includes:ro
+      - /home/hrd/.openclaw/workspace/projects/xstrm-suite/data/nginx-log:/var/log/nginx
+      - /home/hrd/.openclaw/workspace/projects/xstrm-suite/data/nginx-cache:/var/cache/nginx
+      - /www/server/panel/vhost/cert/nf.tmdai.org:/etc/nginx/conf.d/cert:ro

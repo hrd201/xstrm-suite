@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Subtitle Synchronization**: Introduced `src/subtitle_syncer.py` to automatically download subtitles (`.srt`, `.ass`, etc.) from AList to the local strm folder during scans.
+- **Web Admin UI Sorting**: AList directory browser now sorts items by modification date (newest first) and displays timestamps for better accessibility.
+- **Configuration Expansion**: Added `scan.subtitle_sync` and `scan.subtitle_exts` settings to `strm-sync.yaml`.
 - **Extended media format support**: Expanded scan whitelist for more video and audio extensions.
   - Video: `.mov`, `.wmv`, `.flv`, `.webm`, `.m4v`, `.mpg`, `.mpeg`, `.rmvb`, `.iso`
   - Audio: `.mp3`, `.m4a`, `.flac`, `.aac`, `.ape`, `.wav`, `.ogg`, `.opus`, `.wma`, `.alac`, `.aiff`, `.aif`, `.amr`
