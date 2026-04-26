@@ -64,7 +64,7 @@ xstrm-suite/
 git clone https://github.com/hrd201/xstrm-suite.git
 cd xstrm-suite
 
-# Run bootstrap installation
+# Run bootstrap installation (Recommended path: /opt/xstrm-suite/)
 cd scripts
 sudo ./bootstrap.sh
 ```
@@ -77,6 +77,8 @@ The bootstrap script will interactively prompt for:
 - Media mount root path
 - STRM output directory
 - Scan source list
+
+> **Note**: It is highly recommended to install the project in `/opt/xstrm-suite/` for consistency and easier future migrations.
 
 ### Manual Installation
 
@@ -106,6 +108,10 @@ Make sure your AList server is running and you have:
 #### 3. Create Configuration
 
 ```bash
+# Recommended: Move project to /opt/xstrm-suite/
+# sudo mv xstrm-suite /opt/xstrm-suite/
+# cd /opt/xstrm-suite/
+
 # Copy the template configuration
 cp config/strm-sync.yaml.example config/strm-sync.yaml
 
