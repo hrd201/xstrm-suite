@@ -5,6 +5,9 @@
 ## [未发布]
 
 ### Added
+- **字幕同步功能**：新增 `src/subtitle_syncer.py` 模块，扫描时可自动从 AList 下载字幕文件（`.srt`, `.ass` 等）到服务器本地对应的 `.strm` 目录。
+- **Web 界面目录浏览排序优化**：管理后台 AList 目录浏览现已支持按修改时间降序排列（新文件夹排在最前），并在界面显示修改时间戳。
+- **配置项扩展**：在 `strm-sync.yaml` 中新增 `scan.subtitle_sync` 和 `scan.subtitle_exts` 配置。
 - **扩展媒体格式支持**：扫描白名单新增更多视频与音频扩展名
   - 视频：`.mov`、`.wmv`、`.flv`、`.webm`、`.m4v`、`.mpg`、`.mpeg`、`.rmvb`、`.iso`
   - 音频：`.mp3`、`.m4a`、`.flac`、`.aac`、`.ape`、`.wav`、`.ogg`、`.opus`、`.wma`、`.alac`、`.aiff`、`.aif`、`.amr`

@@ -18,9 +18,10 @@ xstrm-suite is designed to solve common challenges when using Emby with cloud st
 
 ## Features
 
-- **AList Integration**: Direct integration with AList for media scanning
+- **Subtitle Sync**: Automatically scan and download subtitle files from the same AList directory to your local server.
+- **Web Admin UI**: A powerful management dashboard for scanning, configuration, and directory browsing with date-based sorting (newest first).
+- **AList Integration**: Direct interaction with AList API for file listing and link resolution.
 - **Automatic STRM Generation**: Automatically generates `.strm` files for your media library
-- **Admin Web UI**: Browse AList directories and trigger scans from web interface
 - **Incremental Sync**: Only generates missing STRM files, skips existing ones
 - **State Management**: Tracks generated files to avoid duplicates
 - **Flexible Scanning**: Scan all sources or specify individual directories

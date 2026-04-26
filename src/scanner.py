@@ -15,21 +15,26 @@ from .state import (
 )
 from .alist_client import alist_request
 from .generator import generate_one, resolve_strm_target, map_scan_to_media
+from .subtitle_syncer import get_subtitle_exts, is_subtitle_sync_enabled, sync_subtitles
 
 
-def walk_alist(config: dict, root_path: str) -> List[str]:
-    """Recursively walk AList directory and find media files.
+def walk_alist(config: dict, root_path: str):
+    """Recursively walk AList directory and find media and subtitle files.
 
     Args:
         config: Configuration dict with 'alist' settings
         root_path: Root path to start walking from
 
     Returns:
-        List of absolute media file paths
+        Tuple of (media_files, subtitle_files):
+          - media_files: List of absolute media file paths
+          - subtitle_files: List of absolute subtitle file paths
     """
     root_path = root_path.rstrip('/') or '/'
     media_exts = get_media_exts(config)
-    found = []
+    subtitle_exts = get_subtitle_exts(config)
+    media_found = []
+    subtitle_found = []
     stack = [root_path]
     scanned_dirs = 0
     while stack:
@@ -56,8 +61,10 @@ def walk_alist(config: dict, root_path: str) -> List[str]:
             if is_dir:
                 stack.append(child)
             elif Path(name).suffix.lower() in media_exts:
-                found.append(child)
-    return sorted(found)
+                media_found.append(child)
+            elif Path(name).suffix.lower() in subtitle_exts:
+                subtitle_found.append(child)
+    return sorted(media_found), sorted(subtitle_found)
 
 
 def find_matching_source(config: dict, source_input: str) -> Optional[dict]:
@@ -137,7 +144,7 @@ def run_source(config: dict, src: dict) -> dict:
     print(f'本次 resolved_strm_mode: {resolved_mode}')
 
     try:
-        files = walk_alist(config, scan_path)
+        files, subtitle_files = walk_alist(config, scan_path)
     except Exception as e:
         print(f'跳过不可访问的 AList 目录: {scan_path} ({e})')
         return {
@@ -149,12 +156,15 @@ def run_source(config: dict, src: dict) -> dict:
             'skipped_existing_file': 0,
             'skipped_state_only': 0,
             'pruned_state_entries': 0,
+            'subtitle_downloaded': 0,
+            'subtitle_skipped': 0,
+            'subtitle_failed': 0,
             'missing_source': True,
             'error': str(e),
         }
 
     total_found = len(files)
-    print(f'发现媒体文件 {total_found} 个')
+    print(f'发现媒体文件 {total_found} 个，字幕文件 {len(subtitle_files)} 个')
 
     pruned_state_entries = prune_missing_state_entries(state, source_key, output_root)
     existing_state = set(state['sources'].get(source_key, {}).get('generated', []))
@@ -191,6 +201,23 @@ def run_source(config: dict, src: dict) -> dict:
     record_generated(state, source_key, generated)
     save_state(state)
 
+    # 字幕同步
+    subtitle_stats = {'downloaded': 0, 'skipped_existing': 0, 'failed': 0}
+    if is_subtitle_sync_enabled(config) and subtitle_files:
+        print(f'开始同步字幕文件，共 {len(subtitle_files)} 个...')
+        subtitle_stats = sync_subtitles(
+            config=config,
+            subtitle_files=subtitle_files,
+            output_root=output_root,
+            scan_path=scan_path,
+            output_prefix=output_prefix,
+        )
+        print(
+            f'字幕同步完成: 下载 {subtitle_stats["downloaded"]} 个，'
+            f'跳过已存在 {subtitle_stats["skipped_existing"]} 个，'
+            f'失败 {subtitle_stats["failed"]} 个'
+        )
+
     summary = {
         'scan_path': scan_path,
         'output_prefix': output_prefix,
@@ -200,8 +227,18 @@ def run_source(config: dict, src: dict) -> dict:
         'skipped_existing_file': skipped_existing_file,
         'skipped_state_only': skipped_state_only,
         'pruned_state_entries': pruned_state_entries,
+        'subtitle_downloaded': subtitle_stats['downloaded'],
+        'subtitle_skipped': subtitle_stats['skipped_existing'],
+        'subtitle_failed': subtitle_stats['failed'],
     }
-    print(f"统计: 发现 {total_found} 个，新增 {len(generated)} 个，跳过已存在文件 {skipped_existing_file} 个，状态跳过 {skipped_state_only} 个，清理失效状态 {pruned_state_entries} 个")
+    print(
+        f"统计: 发现 {total_found} 个，新增 {len(generated)} 个，"
+        f"跳过已存在文件 {skipped_existing_file} 个，状态跳过 {skipped_state_only} 个，"
+        f"清理失效状态 {pruned_state_entries} 个 "
+        f"| 字幕: 下载 {subtitle_stats['downloaded']} 个，"
+        f"跳过 {subtitle_stats['skipped_existing']} 个，"
+        f"失败 {subtitle_stats['failed']} 个"
+    )
     return summary
 
 
@@ -253,5 +290,8 @@ def run_all_sources(config: dict) -> dict:
         totals['skipped_state_only'] += summary['skipped_state_only']
         totals['pruned_state_entries'] += summary.get('pruned_state_entries', 0)
         totals['missing_sources'] += 1 if summary.get('missing_source') else 0
+        totals['subtitle_downloaded'] = totals.get('subtitle_downloaded', 0) + summary.get('subtitle_downloaded', 0)
+        totals['subtitle_skipped'] = totals.get('subtitle_skipped', 0) + summary.get('subtitle_skipped', 0)
+        totals['subtitle_failed'] = totals.get('subtitle_failed', 0) + summary.get('subtitle_failed', 0)
         totals['items'].append(summary)
     return totals

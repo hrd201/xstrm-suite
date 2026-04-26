@@ -1,0 +1,9 @@
+{
+  "task": "scan_path",
+  "running": false,
+  "success": true,
+  "message": "发现 1 个，新增 1 个，跳过已存在文件 0 个，状态跳过 0 个，resolved_strm_mode=logical_path",
+  "log_file": "/opt/xstrm-suite/data/tasks/logs/scan_path-20260419-164334.log",
+  "started_at": "2026-04-19T16:43:34+08:00",
+  "finished_at": "2026-04-19T16:43:38+08:00"
+}
