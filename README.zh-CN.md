@@ -64,7 +64,7 @@ xstrm-suite/
 git clone https://github.com/hrd201/xstrm-suite.git
 cd xstrm-suite
 
-# 运行一键安装
+# 运行一键安装 (推荐路径: /opt/xstrm-suite/)
 cd scripts
 sudo ./install.sh
 ```
@@ -77,6 +77,8 @@ sudo ./install.sh
 - 媒体挂载根路径
 - STRM 输出目录
 - 扫描源列表
+
+> **注意**: 强烈建议将项目安装在 `/opt/xstrm-suite/` 目录下，这有助于保持路径统一，方便未来迁移和维护。
 
 ### 手动安装
 
@@ -106,6 +108,10 @@ pip3 install docker-compose
 #### 3. 创建配置
 
 ```bash
+# 推荐操作：将项目移动到 /opt/xstrm-suite/
+# sudo mv xstrm-suite /opt/xstrm-suite/
+# cd /opt/xstrm-suite/
+
 # 复制配置模板
 cp config/strm-sync.yaml.example config/strm-sync.yaml
 
