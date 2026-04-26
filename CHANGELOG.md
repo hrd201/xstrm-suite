@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 - **Template sync update**: `config/templates/strm-sync.yaml.template` now includes the same extension set to keep fresh deployments consistent.
 
 ### Fixed
+- **Subtitle download 403 error**: Switched to AList proxy download interface (`/d/<path>`) to resolve 403 issues when directly requesting cloud drive links (like 115) without cookies.
+- **URL encoding in subtitle sync**: Fixed download failures caused by spaces or special characters in file paths.
 - **Scanner extension loading**: `src/scanner.py` now respects `scan.include_ext` from configuration instead of relying only on the built-in constant set.
 - **Music directory scanning**: Fixed the issue where audio extensions could be configured but were not actually picked up during scans, allowing paths like `/mnt/115/音乐` to detect audio media correctly.
 
