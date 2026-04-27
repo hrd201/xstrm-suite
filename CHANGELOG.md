@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.2.1]2026-04-26
 
 ### Added
 - **Subtitle Synchronization**: Introduced `src/subtitle_syncer.py` to automatically download subtitles (`.srt`, `.ass`, etc.) from AList to the local strm folder during scans.
