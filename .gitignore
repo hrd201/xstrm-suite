@@ -11,7 +11,12 @@ nginx-cache/
 
 # xstrm state
 /data/*.json
+/data/*.sqlite
+/data/*.sqlite3
 !/data/.gitkeep
+
+# local incremental refresh config may contain AList tokens
+/config/incremental-strm.json
 
 # python
 __pycache__/

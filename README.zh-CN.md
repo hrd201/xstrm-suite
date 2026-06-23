@@ -23,6 +23,7 @@ xstrm-suite 旨在解决 Emby 配合网盘使用时遇到的常见问题：
 - **AList 集成**：直接集成 AList 进行媒体扫描
 - **自动 STRM 生成**：自动为媒体库生成 `.strm` 文件
 - **增量同步**：仅生成缺失的 STRM 文件，跳过已存在的
+- **队列式增量刷新**：只刷新候选目录，并在 Emby 删除本地 `.strm` 后按需补生成
 - **状态管理**：跟踪已生成的文件以避免重复
 - **灵活扫描**：扫描所有来源或指定单独目录
 - **扩展媒体格式支持**：支持常见视频和音频格式，包括 `.mp4`、`.mkv`、`.mov`、`.webm`、`.mp3`、`.m4a`、`.flac`、`.aac`、`.ape`、`.wav`、`.ogg` 等
@@ -256,6 +257,36 @@ STRM 文件:     /emby-strm/115/电影/角斗士2 Gladiator II/GladiatorII.strm
                ↓ (内容)
 STRM 内容:     /115/电影/角斗士2 Gladiator II/GladiatorII.mkv
 ```
+
+## 队列式增量刷新
+
+日常更新可以使用 `scripts/incremental_strm_refresh.py`。它不会每次递归扫描所有来源，而是维护一个本地候选目录队列，每轮只刷新少量 AList 目录。
+
+适用场景：
+
+- 新剧集加入到原有剧集目录中；
+- 新置顶目录需要优先处理；
+- Emby 删除了本地 `.strm`，但远程媒体仍然存在，需要自动补生成；
+- 希望限制 AList 请求量，并通过间隔和随机抖动降低网盘风控风险。
+
+快速使用：
+
+```bash
+cp config/incremental-strm.json.example config/incremental-strm.json
+vim config/incremental-strm.json
+python3 scripts/incremental_strm_refresh.py --config config/incremental-strm.json run-once
+```
+
+手动加入一个高优先级目录：
+
+```bash
+python3 scripts/incremental_strm_refresh.py \
+  --config config/incremental-strm.json \
+  queue-dir "/mnt/cloud/series/Example Show" \
+  --reason manual
+```
+
+更多配置、路径映射和 systemd 定时器示例见 [Incremental STRM Refresh](./docs/INCREMENTAL_STRM_REFRESH.md)。
 
 ### 支持的媒体扩展名
 
