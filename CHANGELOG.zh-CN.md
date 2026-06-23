@@ -2,6 +2,18 @@
 
 本文件记录此项目的所有重要变更。
 
+## [0.2.2] - 2026-06-23
+
+### Added
+- **队列式增量 STRM 刷新**：新增 `scripts/incremental_strm_refresh.py`，通过本地 SQLite 索引和候选目录队列，只刷新少量目录，避免日常任务递归扫描所有来源。
+- **任务封装脚本**：新增 `scripts/task_incremental_refresh.sh`，支持任务锁和现有 xstrm 任务状态输出。
+- **缺失 STRM 自动补生成**：如果 Emby 删除了本地 `.strm`，但 AList 中远程媒体仍然存在，下一次刷新到对应目录时会自动补生成。
+- **刷新队列控制**：支持手动加入目录队列、活跃父目录复查、请求间隔、随机抖动、失败延迟重试和按固定时间运行的守护模式。
+- **示例配置与说明文档**：新增 `config/incremental-strm.json.example` 和 `docs/INCREMENTAL_STRM_REFRESH.md`，使用通用占位，不包含私有部署信息。
+
+### Security
+- 新增忽略规则，避免真实增量刷新配置和 SQLite 状态库被误提交，从而泄露 AList token 或本地运行状态。
+
 ## [0.2.1]2026-04-26
 
 ### Added

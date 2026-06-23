@@ -23,6 +23,7 @@ xstrm-suite is designed to solve common challenges when using Emby with cloud st
 - **AList Integration**: Direct interaction with AList API for file listing and link resolution.
 - **Automatic STRM Generation**: Automatically generates `.strm` files for your media library
 - **Incremental Sync**: Only generates missing STRM files, skips existing ones
+- **Queue-Based Incremental Refresh**: Refreshes only candidate directories and regenerates missing `.strm` files when Emby deletes them
 - **State Management**: Tracks generated files to avoid duplicates
 - **Flexible Scanning**: Scan all sources or specify individual directories
 - **Extended Media Extension Support**: Supports common video and audio formats including `.mp4`, `.mkv`, `.mov`, `.webm`, `.mp3`, `.m4a`, `.flac`, `.aac`, `.ape`, `.wav`, `.ogg`, and more
@@ -256,6 +257,36 @@ STRM File:     /emby-strm/115/电影/角斗士2 Gladiator II/GladiatorII.strm
                ↓ (content)
 STRM Content:  /115/电影/角斗士2 Gladiator II/GladiatorII.mkv
 ```
+
+## Queue-Based Incremental Refresh
+
+For daily updates, `scripts/incremental_strm_refresh.py` can refresh only a small queue of candidate AList directories instead of recursively scanning every source.
+
+This is useful when:
+
+- new episodes are added to an existing show directory;
+- a newly pinned directory should be processed first;
+- Emby deletes a local `.strm` file and it should be regenerated only if the remote media still exists;
+- AList requests need rate limits and jitter to reduce cloud-drive account risk.
+
+Quick setup:
+
+```bash
+cp config/incremental-strm.json.example config/incremental-strm.json
+vim config/incremental-strm.json
+python3 scripts/incremental_strm_refresh.py --config config/incremental-strm.json run-once
+```
+
+Queue a specific directory:
+
+```bash
+python3 scripts/incremental_strm_refresh.py \
+  --config config/incremental-strm.json \
+  queue-dir "/mnt/cloud/series/Example Show" \
+  --reason manual
+```
+
+See [Incremental STRM Refresh](./docs/INCREMENTAL_STRM_REFRESH.md) for configuration details, path mapping, and a systemd timer example.
 
 ### Supported Media Extensions
 

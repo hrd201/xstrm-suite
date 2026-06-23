@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.2] - 2026-06-23
+
+### Added
+- **Queue-based incremental STRM refresh**: Added `scripts/incremental_strm_refresh.py`, which keeps a local SQLite index and refreshes only queued candidate directories instead of recursively scanning every source.
+- **Task wrapper**: Added `scripts/task_incremental_refresh.sh` for lock-protected task execution with existing xstrm task status output.
+- **Missing STRM regeneration**: If Emby deletes a local `.strm` file but the media still exists in AList, the incremental refresher can regenerate the missing `.strm` during the next directory refresh.
+- **Refresh queue controls**: Added support for manual directory queueing, active parent directory rechecks, request intervals, jitter, retry delays, and scheduled daemon mode.
+- **Example configuration and documentation**: Added `config/incremental-strm.json.example` and `docs/INCREMENTAL_STRM_REFRESH.md` with generic placeholders and systemd timer examples.
+
+### Security
+- Added ignore rules for real incremental refresh configs and SQLite state files so local AList tokens and runtime state are not committed accidentally.
+
 ## [0.2.1]2026-04-26
 
 ### Added

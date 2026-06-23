@@ -1,0 +1,55 @@
+{
+  "alist_base_url": "http://YOUR_ALIST_HOST:5244/",
+  "alist_token": "YOUR_ALIST_TOKEN",
+  "strm_output_dir": "/emby-strm",
+  "state_db": "/opt/xstrm-suite/data/incremental-strm.sqlite3",
+  "watch_dirs": [
+    "/mnt/cloud/movies",
+    "/mnt/cloud/series"
+  ],
+  "sources": [
+    {
+      "scan_path": "/mnt/cloud/movies",
+      "output_prefix": "/cloud/movies"
+    },
+    {
+      "scan_path": "/mnt/cloud/series",
+      "output_prefix": "/cloud/series"
+    }
+  ],
+  "strm_url_template": "{media_path}",
+  "include_extensions": [
+    ".3gp",
+    ".avi",
+    ".flv",
+    ".m2ts",
+    ".m4v",
+    ".mkv",
+    ".mov",
+    ".mp4",
+    ".mpeg",
+    ".mpg",
+    ".mts",
+    ".rmvb",
+    ".ts",
+    ".webm",
+    ".wmv"
+  ],
+  "exclude_name_contains": [
+    "sample",
+    "trailer",
+    "behind the scenes"
+  ],
+  "incremental_refresh": {
+    "schedule_times": [
+      "02:30",
+      "14:30"
+    ],
+    "max_dirs_per_run": 20,
+    "request_interval_seconds": 3,
+    "jitter_seconds": 10,
+    "active_dir_ttl_days": 14,
+    "recheck_active_after_hours": 6,
+    "retry_after_minutes": 30
+  }
+}
