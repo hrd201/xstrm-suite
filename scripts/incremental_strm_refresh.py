@@ -465,7 +465,7 @@ def refresh_one_dir(client: AlistClient, state: State, config: Config, path: str
         if is_dir:
             if is_new:
                 stats["new_dirs"] += 1
-                state.queue_dir(child_path, "new_dir", priority=60)
+            state.queue_dir(child_path, "child_dir_refresh", priority=60)
             continue
 
         existing = state.get_entry(child_path)
@@ -482,7 +482,6 @@ def refresh_one_dir(client: AlistClient, state: State, config: Config, path: str
                 True,
             )
             stats["new_files"] += 1
-            state.queue_dir(remote_parent(child_path), "active_parent_new_file", priority=70)
 
     return stats
 
@@ -502,7 +501,11 @@ def run_once(config: Config) -> dict[str, int]:
     run_id = state.start_run()
     stats = {"dirs_scanned": 0, "new_files": 0, "new_dirs": 0, "errors": 0}
     try:
-        for path in state.pop_dirs(config.max_dirs_per_run):
+        while stats["dirs_scanned"] < config.max_dirs_per_run:
+            paths = state.pop_dirs(1)
+            if not paths:
+                break
+            path = paths[0]
             try:
                 result = refresh_one_dir(client, state, config, path)
                 stats["dirs_scanned"] += 1
