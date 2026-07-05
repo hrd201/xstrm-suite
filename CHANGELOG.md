@@ -14,6 +14,10 @@ All notable changes to this project will be documented in this file.
 ### Security
 - Added ignore rules for real incremental refresh configs and SQLite state files so local AList tokens and runtime state are not committed accidentally.
 
+### Fixed
+- Incremental refresh now keeps consuming newly queued child directories within the same run budget, so refreshing a show folder can discover media added under season subdirectories.
+- Avoided immediately requeueing the directory currently being scanned after generating a new `.strm`, reducing duplicate requests in the same run.
+
 ## [0.2.1]2026-04-26
 
 ### Added

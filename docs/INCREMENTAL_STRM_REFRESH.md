@@ -28,8 +28,8 @@ The runtime config may contain AList tokens and local paths. Do not commit it.
 1. `entries` stores known AList files and generated `.strm` paths.
 2. `dir_queue` stores candidate directories to refresh.
 3. Each run lists only queued directories, up to `incremental_refresh.max_dirs_per_run`.
-4. New subdirectories are queued for future runs.
-5. New media files generate `.strm` files and mark their parent directory as active.
+4. Subdirectories found during a refresh are queued and may be processed in the same run while the directory budget allows.
+5. New media files generate `.strm` files and are recorded as active entries for later rechecks.
 6. If a media file is already indexed but its `.strm` file is missing, the refresher regenerates it.
 7. Recently active parent directories are periodically rechecked.
 
@@ -166,7 +166,7 @@ systemctl enable --now xstrm-incremental-refresh.timer
 
 ## Operational Notes
 
-- Keep `max_dirs_per_run` conservative.
+- Keep `max_dirs_per_run` conservative because child directories discovered during a run can now consume the same run budget.
 - Use request intervals and jitter to avoid bursty AList access.
 - Queue newly pinned directories with `queue-dir`.
 - Do not use this as a replacement for full rebuilds. It is for daily small changes.
@@ -187,8 +187,8 @@ systemctl enable --now xstrm-incremental-refresh.timer
 1. `entries` 表记录已见过的远程文件和对应 `.strm`。
 2. `dir_queue` 表记录待刷新的目录。
 3. 每轮只刷新少量候选目录。
-4. 发现新增子目录后加入队列。
-5. 发现新增媒体文件后生成 `.strm`，并把父目录标记为活跃目录。
+4. 刷新时发现的子目录会加入队列，只要本轮目录预算还够，就可以在同一轮继续处理。
+5. 发现新增媒体文件后生成 `.strm`，并记录为活跃条目，供后续复查。
 6. 如果数据库已记录媒体文件，但本地 `.strm` 缺失，会自动补生成。
 
 运行配置中可能包含 AList token 和本机路径，请只保留 `config/incremental-strm.json.example`，不要提交真实 `config/incremental-strm.json`。
