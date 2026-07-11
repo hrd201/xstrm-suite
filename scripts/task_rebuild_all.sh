@@ -6,7 +6,7 @@ BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 source "$BASE_DIR/scripts/task_lib.sh"
 
 TASK_NAME="rebuild_all"
-LOCK_DIR="$TASK_DIR/${TASK_NAME}.lock"
+LOCK_DIR="$TASK_DIR/xstrm-write.lock"
 LOG_FILE="$(task_log_path "$TASK_NAME")"
 STARTED_AT="$(now_iso)"
 
@@ -27,7 +27,7 @@ print(cfg.get('output_root', '/emby-strm'))
 PY
 )
 
-{
+if {
   echo "[rebuild] output_root=$OUTPUT_ROOT"
   if [ -d "$OUTPUT_ROOT" ]; then
     find "$OUTPUT_ROOT" -type f -name '*.strm' -delete
@@ -44,9 +44,7 @@ state.write_text(json.dumps({"version": 1, "sources": {}}, ensure_ascii=False, i
 print('[rebuild] 已重置状态文件')
 PY
   python3 "$BASE_DIR/scripts/strm_x.py" --scan-all
-} >"$LOG_FILE" 2>&1
-
-if [ $? -eq 0 ]; then
+} >"$LOG_FILE" 2>&1; then
   summary="$(summary_from_log "$LOG_FILE")"
   FINISHED_AT="$(now_iso)"
   status_write "$TASK_NAME" false true "$summary" "$LOG_FILE" "$STARTED_AT" "$FINISHED_AT"

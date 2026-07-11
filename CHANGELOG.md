@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-07-11
+
+### Added
+- Unified incremental refresh settings into `config/strm-sync.yaml`, while retaining JSON compatibility.
+- Added active and cold-directory scheduling, dead-letter handling, ignored paths, remote-missing tracking, and configurable remote deletion policy.
+- Added async Web tasks, queue health counters, explicit incremental/full-scan actions, and ignore/unignore controls.
+- Added automated regression tests and GitHub Actions checks.
+
+### Security
+- Removed tracked runtime credentials, generated runtime files, deployment hostnames, and backup artifacts; added safe example configs and CI secret checks.
+- Added POST request verification, atomic configuration writes, restrictive runtime permissions, service hardening, and upgrade backups.
+
+### Fixed
+- Regular polling no longer recursively requeues every known child directory.
+- New and restored STRM files are reported separately, and partial directory failures return a non-zero exit status.
+- Upgrade and rebuild failures now preserve production data and produce accurate task state.
+
 ## [0.2.2] - 2026-06-23
 
 ### Added

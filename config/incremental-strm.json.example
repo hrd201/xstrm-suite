@@ -50,6 +50,11 @@
     "jitter_seconds": 10,
     "active_dir_ttl_days": 14,
     "recheck_active_after_hours": 6,
-    "retry_after_minutes": 30
+    "retry_after_minutes": 30,
+    "max_retry_attempts": 3,
+    "cold_dir_recheck_days": 7,
+    "cold_dirs_per_run": 4,
+    "remote_delete_policy": "keep",
+    "remote_delete_grace_days": 7
   }
 }

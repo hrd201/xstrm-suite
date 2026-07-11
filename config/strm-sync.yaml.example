@@ -1,0 +1,44 @@
+output_root: /emby-strm
+state_file: /opt/xstrm-suite/data/strm-sync-state.json
+mode: mirror
+strm_mode: auto
+alist:
+  base_url: http://127.0.0.1:5244
+  token: YOUR_ALIST_TOKEN
+  public_url: http://127.0.0.1:5244
+scan:
+  incremental_only: true
+  subtitle_sync: true
+  include_ext:
+    - .mp4
+    - .mkv
+    - .avi
+    - .ts
+    - .m2ts
+sources:
+  - scan_mode: alist
+    scan_path: /mnt/cloud/movies
+    output_prefix: /cloud/movies
+    library_type: movie
+  - scan_mode: alist
+    scan_path: /mnt/cloud/series
+    output_prefix: /cloud/series
+    library_type: series
+emby2alist:
+  media_mount_path:
+    - /mnt/cloud
+incremental_refresh:
+  enabled: true
+  state_db: /opt/xstrm-suite/data/incremental-strm.sqlite3
+  schedule_times: ["02:30", "14:30"]
+  max_dirs_per_run: 20
+  request_interval_seconds: 3
+  jitter_seconds: 10
+  active_dir_ttl_days: 21
+  recheck_active_after_hours: 6
+  cold_dir_recheck_days: 7
+  cold_dirs_per_run: 4
+  retry_after_minutes: 30
+  max_retry_attempts: 3
+  remote_delete_policy: keep
+  remote_delete_grace_days: 7

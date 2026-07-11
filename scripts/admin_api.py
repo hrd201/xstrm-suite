@@ -16,7 +16,8 @@ HOST = '127.0.0.1'
 PORT = 18095
 
 TASKS = {
-    'scan': ['bash', str(SCRIPTS_DIR / 'task_scan_incremental.sh')],
+    'scan': ['bash', str(SCRIPTS_DIR / 'task_incremental_refresh.sh')],
+    'scan_full': ['bash', str(SCRIPTS_DIR / 'task_scan_incremental.sh')],
     'rebuild': ['bash', str(SCRIPTS_DIR / 'task_rebuild_all.sh')],
     'status': ['bash', str(SCRIPTS_DIR / 'task_status.sh')],
 }
@@ -25,6 +26,18 @@ TASKS = {
 def run_cmd(cmd: list[str]) -> tuple[int, str, str]:
     proc = subprocess.run(cmd, cwd=BASE_DIR, capture_output=True, text=True)
     return proc.returncode, proc.stdout, proc.stderr
+
+
+def start_cmd(cmd: list[str]) -> int:
+    proc = subprocess.Popen(
+        cmd,
+        cwd=BASE_DIR,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    return proc.pid
 
 
 def update_basic_auth_password(new_password: str) -> tuple[bool, str]:
@@ -53,7 +66,10 @@ def load_sync_config() -> dict:
 
 def save_sync_config(data: dict):
     import yaml
-    CONFIG_PATH.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding='utf-8')
+    temporary = CONFIG_PATH.with_name(CONFIG_PATH.name + '.tmp')
+    temporary.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding='utf-8')
+    temporary.chmod(0o600)
+    temporary.replace(CONFIG_PATH)
 
 
 def derive_sources_preview(profile: dict, resolved_mode: str) -> tuple[list[dict], str | None]:
@@ -147,6 +163,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header('Content-Type', content_type)
         self.send_header('Content-Length', str(len(body)))
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.send_header('Referrer-Policy', 'no-referrer')
+        self.send_header('Cache-Control', 'no-store')
         self.end_headers()
         if write_body:
             self.wfile.write(body)
@@ -182,6 +201,16 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:
                     payload = {'raw': out}
                 return self._json(200, {'ok': True, 'status': payload}, write_body=write_body)
+            return self._json(500, {'ok': False, 'error': err or out}, write_body=write_body)
+        if parsed.path == '/api/admin/xstrm/incremental/status':
+            code, out, err = run_cmd([
+                sys.executable,
+                str(SCRIPTS_DIR / 'incremental_strm_refresh.py'),
+                '--config', str(CONFIG_PATH),
+                'status',
+            ])
+            if code == 0:
+                return self._json(200, {'ok': True, 'incremental': json.loads(out)}, write_body=write_body)
             return self._json(500, {'ok': False, 'error': err or out}, write_body=write_body)
         if parsed.path == '/api/admin/xstrm/logs/latest':
             status_file = BASE_DIR / 'data' / 'tasks' / 'status.json'
@@ -238,7 +267,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        if self.headers.get('X-XSTRM-Requested-With') != 'xstrm-admin':
+            return self._json(403, {'ok': False, 'error': 'missing request verification header'})
         length = int(self.headers.get('Content-Length', '0'))
+        if length > 1024 * 1024:
+            return self._json(413, {'ok': False, 'error': 'request body too large'})
         raw = self.rfile.read(length).decode('utf-8') if length else ''
         data = {}
         if raw:
@@ -248,35 +281,34 @@ class Handler(BaseHTTPRequestHandler):
                 data = {k: v[0] for k, v in parse_qs(raw).items()}
 
         if parsed.path == '/api/admin/xstrm/scan':
-            code, out, err = run_cmd(TASKS['scan'])
-            return self._json(200 if code in (0, 2) else 500, {
-                'ok': code in (0, 2),
-                'exit_code': code,
-                'stdout': out,
-                'stderr': err,
-            })
+            pid = start_cmd(TASKS['scan'])
+            return self._json(202, {'ok': True, 'pid': pid, 'message': '增量刷新任务已提交'})
+
+        if parsed.path == '/api/admin/xstrm/scan-full':
+            pid = start_cmd(TASKS['scan_full'])
+            return self._json(202, {'ok': True, 'pid': pid, 'message': '完整校验任务已提交'})
 
         if parsed.path == '/api/admin/xstrm/rebuild':
-            code, out, err = run_cmd(TASKS['rebuild'])
-            return self._json(200 if code in (0, 2) else 500, {
-                'ok': code in (0, 2),
-                'exit_code': code,
-                'stdout': out,
-                'stderr': err,
-            })
+            pid = start_cmd(TASKS['rebuild'])
+            return self._json(202, {'ok': True, 'pid': pid, 'message': '全量重建任务已提交'})
 
         if parsed.path == '/api/admin/xstrm/scan-path':
             target = (data.get('path') or '').strip()
             if not target:
                 return self._json(400, {'ok': False, 'error': 'path required'})
-            code, out, err = run_cmd(['bash', str(SCRIPTS_DIR / 'task_scan_path.sh'), target])
-            return self._json(200 if code in (0, 2) else 500, {
-                'ok': code in (0, 2),
-                'exit_code': code,
-                'path': target,
-                'stdout': out,
-                'stderr': err,
-            })
+            pid = start_cmd(['bash', str(SCRIPTS_DIR / 'task_incremental_refresh.sh'), target])
+            return self._json(202, {'ok': True, 'pid': pid, 'path': target, 'message': '指定目录已加入递归刷新队列'})
+
+        if parsed.path in ('/api/admin/xstrm/ignore', '/api/admin/xstrm/unignore'):
+            target = (data.get('path') or '').strip()
+            if not target:
+                return self._json(400, {'ok': False, 'error': 'path required'})
+            command = 'ignore-path' if parsed.path.endswith('/ignore') else 'unignore-path'
+            cmd = [sys.executable, str(SCRIPTS_DIR / 'incremental_strm_refresh.py'), '--config', str(CONFIG_PATH), command, target]
+            if command == 'ignore-path':
+                cmd.extend(['--reason', 'web_manual'])
+            code, out, err = run_cmd(cmd)
+            return self._json(200 if code == 0 else 500, {'ok': code == 0, 'message': out.strip(), 'error': err.strip()})
 
         if parsed.path == '/api/admin/xstrm/change-password':
             password = (data.get('password') or '').strip()

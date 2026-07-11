@@ -6,6 +6,7 @@ cache/
 embyCache/
 *.bak
 *.runtime
+*.runtime.*
 nginx-log/
 nginx-cache/
 
@@ -17,6 +18,10 @@ nginx-cache/
 
 # local incremental refresh config may contain AList tokens
 /config/incremental-strm.json
+/config/runtime.yaml
+/config/strm-sync.yaml
+/config/cert/
+!/config/cert/.gitkeep
 
 # python
 __pycache__/
