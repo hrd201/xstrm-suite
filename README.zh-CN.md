@@ -260,7 +260,7 @@ STRM 内容:     /115/电影/角斗士2 Gladiator II/GladiatorII.mkv
 
 ## 队列式增量刷新
 
-日常更新可以使用 `scripts/incremental_strm_refresh.py`。它不会每次递归扫描所有来源，而是维护一个本地候选目录队列，每轮只刷新少量 AList 目录。
+日常更新可以使用 `scripts/incremental_strm_refresh.py`。它只轮询监控根目录、近期活跃目录和少量冷目录；普通定时任务仅深入新建或元数据变化的子目录，手工加入的剧集父目录仍会递归扫描季目录。
 
 适用场景：
 
@@ -272,21 +272,23 @@ STRM 内容:     /115/电影/角斗士2 Gladiator II/GladiatorII.mkv
 快速使用：
 
 ```bash
-cp config/incremental-strm.json.example config/incremental-strm.json
-vim config/incremental-strm.json
-python3 scripts/incremental_strm_refresh.py --config config/incremental-strm.json run-once
+cp config/strm-sync.yaml.example config/strm-sync.yaml
+vim config/strm-sync.yaml
+python3 scripts/incremental_strm_refresh.py --config config/strm-sync.yaml run-once
 ```
 
 手动加入一个高优先级目录：
 
 ```bash
 python3 scripts/incremental_strm_refresh.py \
-  --config config/incremental-strm.json \
+  --config config/strm-sync.yaml \
   queue-dir "/mnt/cloud/series/Example Show" \
   --reason manual
 ```
 
 更多配置、路径映射和 systemd 定时器示例见 [Incremental STRM Refresh](./docs/INCREMENTAL_STRM_REFRESH.md)。
+
+如果要永久删除 Emby 中不需要的影片版本，请先使用 `ignore-path`。被忽略的路径不会再次补生成；`unignore-path` 会取消忽略并安排父目录复查。远程删除会单独记录，并可配置为保留、隔离或在宽限期后删除。
 
 ### 支持的媒体扩展名
 

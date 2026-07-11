@@ -6,7 +6,7 @@ BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 source "$BASE_DIR/scripts/task_lib.sh"
 
 TASK_NAME="scan_incremental"
-LOCK_DIR="$TASK_DIR/${TASK_NAME}.lock"
+LOCK_DIR="$TASK_DIR/xstrm-write.lock"
 LOG_FILE="$(task_log_path "$TASK_NAME")"
 STARTED_AT="$(now_iso)"
 

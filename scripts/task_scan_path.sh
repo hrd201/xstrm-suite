@@ -13,7 +13,7 @@ source "$BASE_DIR/scripts/task_lib.sh"
 
 TASK_NAME="scan_path"
 SAFE_NAME=$(printf '%s' "$TARGET_PATH" | tr '/ :' '___' | cut -c1-80)
-LOCK_DIR="$TASK_DIR/${TASK_NAME}-${SAFE_NAME}.lock"
+LOCK_DIR="$TASK_DIR/xstrm-write.lock"
 LOG_FILE="$(task_log_path "$TASK_NAME")"
 STARTED_AT="$(now_iso)"
 

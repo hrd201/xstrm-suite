@@ -25,6 +25,20 @@ ADMIN_LINK="/usr/local/bin/xstrm-admin"
 SERVICE_DIR="/etc/systemd/system"
 NON_INTERACTIVE=false
 
+ensure_service_user() {
+    if ! id xstrm >/dev/null 2>&1; then
+        useradd --system --home-dir "$INSTALL_ROOT" --shell /usr/sbin/nologin xstrm
+    fi
+    if getent group docker >/dev/null 2>&1; then
+        usermod -aG docker xstrm
+    fi
+    local output_root
+    output_root=$(python3 -c 'import yaml,sys; print((yaml.safe_load(open(sys.argv[1])) or {}).get("output_root", "/emby-strm"))' "$INSTALL_ROOT/config/strm-sync.yaml" 2>/dev/null || echo /emby-strm)
+    mkdir -p "$INSTALL_ROOT/data" "$output_root"
+    chown -R xstrm:xstrm "$INSTALL_ROOT/data" "$output_root"
+    chown xstrm:xstrm "$INSTALL_ROOT/config"/*.yaml "$INSTALL_ROOT/config"/*.json 2>/dev/null || true
+}
+
 # 帮助信息
 show_help() {
     cat <<EOF
@@ -156,6 +170,12 @@ install_systemd_services() {
             > "$SERVICE_DIR/xstrm-admin-api.service"
         log_success "服务已安装: xstrm-admin-api.service"
     fi
+    for unit in incremental-strm-refresh.service incremental-strm-refresh.timer; do
+        if [ -f "$INSTALL_ROOT/services/$unit" ]; then
+            sed "s|/opt/xstrm-suite|$INSTALL_ROOT|g" "$INSTALL_ROOT/services/$unit" > "$SERVICE_DIR/$unit"
+            log_success "服务已安装: $unit"
+        fi
+    done
     
     # 重新加载 systemd
     if need_cmd systemctl; then
@@ -172,6 +192,8 @@ sync_project() {
     # 排除不必要的文件
     rsync -av --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
         --exclude='data' --exclude='logs' \
+        --exclude='config/runtime.yaml' --exclude='config/strm-sync.yaml' \
+        --exclude='config/incremental-strm.json' \
         "$BASE_DIR/" "$INSTALL_ROOT/"
     
     # 确保脚本可执行
@@ -253,9 +275,25 @@ scan:
 sources: []
 emby2alist:
   media_mount_path: []
+incremental_refresh:
+  enabled: true
+  state_db: /opt/xstrm-suite/data/incremental-strm.sqlite3
+  schedule_times: ["02:30", "14:30"]
+  max_dirs_per_run: 20
+  request_interval_seconds: 3
+  jitter_seconds: 10
+  active_dir_ttl_days: 21
+  recheck_active_after_hours: 6
+  cold_dir_recheck_days: 7
+  cold_dirs_per_run: 4
+  retry_after_minutes: 30
+  max_retry_attempts: 3
+  remote_delete_policy: keep
+  remote_delete_grace_days: 7
 EOF
     
     log_success "默认 strm-sync.yaml 已创建: $strm_config"
+    chmod 600 "$runtime_config" "$strm_config"
     log_warn "请编辑配置文件并填入您的 AList token 和 Emby API Key"
 }
 
@@ -298,6 +336,7 @@ start_services() {
         log_info "启动 xstrm-admin-api 服务..."
         systemctl enable xstrm-admin-api.service 2>/dev/null || true
         systemctl start xstrm-admin-api.service 2>/dev/null || true
+        systemctl enable --now incremental-strm-refresh.timer 2>/dev/null || true
         
         if systemctl is-active --quiet xstrm-admin-api.service; then
             log_success "xstrm-admin-api 服务已启动"
@@ -310,10 +349,11 @@ start_services() {
 # 显示安装完成信息
 show_complete() {
     local admin_port
-    admin_port=$(python3 - <<'PY' 2>/dev/null || echo "8095"
+    admin_port=$(python3 - "$INSTALL_ROOT/config/runtime.yaml" <<'PY' 2>/dev/null || echo "8095"
 import yaml
+import sys
 try:
-    cfg = yaml.safe_load(open('/opt/xstrm-suite/config/runtime.yaml', encoding='utf-8').read()) or {}
+    cfg = yaml.safe_load(open(sys.argv[1], encoding='utf-8').read()) or {}
     print(cfg.get('nginx', {}).get('http_port', 8095))
 except:
     print(8095)
@@ -405,8 +445,10 @@ main() {
     # 4. 渲染和应用配置
     render_runtime
     apply_runtime
+    chmod 600 "$INSTALL_ROOT/config/runtime.yaml" "$INSTALL_ROOT/config/strm-sync.yaml" 2>/dev/null || true
     
     # 5. 安装命令和服务
+    ensure_service_user
     install_bin_links
     install_systemd_services
     

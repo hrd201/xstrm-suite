@@ -1,0 +1,12 @@
+[Unit]
+Description=Run incremental STRM refresh twice daily
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+OnCalendar=*-*-* 14:30:00
+Persistent=false
+RandomizedDelaySec=10min
+Unit=incremental-strm-refresh.service
+
+[Install]
+WantedBy=timers.target

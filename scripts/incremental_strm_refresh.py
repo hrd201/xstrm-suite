@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import shutil
 import sqlite3
 import sys
 import time
@@ -72,6 +73,8 @@ def safe_rel_path(remote_path: str) -> Path:
     parts = [part for part in normalize_remote_path(remote_path).split("/") if part]
     safe_parts = []
     for part in parts:
+        if part in {".", ".."}:
+            raise ValueError(f"unsafe remote path component: {part}")
         safe = part.replace(":", "_").replace("\\", "_")
         safe_parts.append(safe)
     return Path(*safe_parts)
@@ -102,6 +105,11 @@ class Config:
     active_dir_ttl_days: int
     recheck_active_after_hours: int
     retry_after_minutes: int
+    max_retry_attempts: int
+    cold_dir_recheck_days: int
+    cold_dirs_per_run: int
+    remote_delete_policy: str
+    remote_delete_grace_days: int
     schedule_times: list[str]
     include_extensions: set[str]
     exclude_name_contains: list[str]
@@ -109,10 +117,17 @@ class Config:
     @classmethod
     def load(cls, path: Path) -> "Config":
         with path.open("r", encoding="utf-8") as fh:
-            raw = json.load(fh)
+            if path.name.lower().endswith((".yaml", ".yml", ".yaml.example", ".yml.example")):
+                import yaml
+
+                raw = yaml.safe_load(fh) or {}
+            else:
+                raw = json.load(fh)
 
         inc = raw.get("incremental_refresh", {})
-        extensions = raw.get("include_extensions") or sorted(VIDEO_EXTENSIONS)
+        alist = raw.get("alist", {}) or {}
+        scan = raw.get("scan", {}) or {}
+        extensions = raw.get("include_extensions") or scan.get("include_ext") or sorted(VIDEO_EXTENSIONS)
         sources = []
         for source in raw.get("sources", []):
             scan_path = source.get("scan_path") or source.get("path")
@@ -120,28 +135,44 @@ class Config:
             if scan_path and output_prefix:
                 sources.append(SourceMapping(normalize_remote_path(scan_path), normalize_remote_path(output_prefix)))
 
-        watch_dirs = [normalize_remote_path(p) for p in raw.get("watch_dirs", [])]
+        watch_dirs = [normalize_remote_path(p) for p in (raw.get("watch_dirs") or inc.get("watch_dirs") or [])]
         if not watch_dirs and sources:
             watch_dirs = [source.scan_path for source in sources]
 
-        return cls(
-            alist_base_url=raw["alist_base_url"].rstrip("/") + "/",
-            alist_token=raw.get("alist_token", ""),
-            strm_output_dir=Path(raw["strm_output_dir"]).expanduser(),
-            state_db=Path(raw.get("state_db", "incremental_strm_state.sqlite3")).expanduser(),
+        config = cls(
+            alist_base_url=(raw.get("alist_base_url") or alist.get("base_url") or "").rstrip("/") + "/",
+            alist_token=raw.get("alist_token") or alist.get("token", ""),
+            strm_output_dir=Path(raw.get("strm_output_dir") or raw.get("output_root", "/emby-strm")).expanduser(),
+            state_db=Path(raw.get("state_db") or inc.get("state_db", "incremental_strm_state.sqlite3")).expanduser(),
             watch_dirs=watch_dirs,
             sources=sources,
-            strm_url_template=raw.get("strm_url_template", "{alist_base_url}d{remote_path}"),
+            strm_url_template=raw.get("strm_url_template") or inc.get("strm_url_template", "{media_path}"),
             max_dirs_per_run=int(inc.get("max_dirs_per_run", 20)),
             request_interval_seconds=float(inc.get("request_interval_seconds", 3)),
             jitter_seconds=float(inc.get("jitter_seconds", 10)),
             active_dir_ttl_days=int(inc.get("active_dir_ttl_days", 14)),
             recheck_active_after_hours=int(inc.get("recheck_active_after_hours", 6)),
             retry_after_minutes=int(inc.get("retry_after_minutes", 30)),
+            max_retry_attempts=int(inc.get("max_retry_attempts", 3)),
+            cold_dir_recheck_days=int(inc.get("cold_dir_recheck_days", 7)),
+            cold_dirs_per_run=int(inc.get("cold_dirs_per_run", 4)),
+            remote_delete_policy=str(inc.get("remote_delete_policy", "keep")),
+            remote_delete_grace_days=int(inc.get("remote_delete_grace_days", 7)),
             schedule_times=list(inc.get("schedule_times", [])),
             include_extensions={ext.lower() for ext in extensions},
-            exclude_name_contains=[s.lower() for s in raw.get("exclude_name_contains", [])],
+            exclude_name_contains=[s.lower() for s in (raw.get("exclude_name_contains") or inc.get("exclude_name_contains", []))],
         )
+        if not config.alist_base_url.strip("/"):
+            raise ValueError("AList base URL is required")
+        if not config.sources:
+            raise ValueError("at least one source mapping is required")
+        if config.max_dirs_per_run < 1:
+            raise ValueError("max_dirs_per_run must be at least 1")
+        if config.remote_delete_policy not in {"keep", "quarantine", "delete"}:
+            raise ValueError("remote_delete_policy must be keep, quarantine, or delete")
+        if config.max_retry_attempts < 1:
+            raise ValueError("max_retry_attempts must be at least 1")
+        return config
 
 
 class AlistClient:
@@ -189,7 +220,10 @@ class State:
     def __init__(self, db_path: Path) -> None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(str(db_path))
+        db_path.chmod(0o600)
         self.conn.row_factory = sqlite3.Row
+        self.conn.execute("pragma journal_mode = wal")
+        self.conn.execute("pragma busy_timeout = 5000")
         self.init_schema()
 
     def init_schema(self) -> None:
@@ -215,7 +249,21 @@ class State:
                 priority integer not null default 100,
                 not_before text not null,
                 attempts integer not null default 0,
+                recursive integer not null default 0,
                 updated_at text not null
+            );
+
+            create table if not exists dead_letter (
+                remote_path text primary key,
+                reason text not null,
+                attempts integer not null,
+                failed_at text not null
+            );
+
+            create table if not exists ignored_paths (
+                remote_path text primary key,
+                reason text not null,
+                created_at text not null
             );
 
             create table if not exists runs (
@@ -229,7 +277,17 @@ class State:
             );
             """
         )
+        self._add_column("entries", "last_scanned_at", "text")
+        self._add_column("entries", "missing_remote_since", "text")
+        self._add_column("dir_queue", "recursive", "integer not null default 0")
+        self._add_column("runs", "restored_files", "integer not null default 0")
+        self._add_column("runs", "remote_missing", "integer not null default 0")
         self.conn.commit()
+
+    def _add_column(self, table: str, column: str, declaration: str) -> None:
+        columns = {row[1] for row in self.conn.execute(f"pragma table_info({table})")}
+        if column not in columns:
+            self.conn.execute(f"alter table {table} add column {column} {declaration}")
 
     def start_run(self) -> int:
         cur = self.conn.execute("insert into runs (started_at) values (?)", (utc_now(),))
@@ -240,7 +298,8 @@ class State:
         self.conn.execute(
             """
             update runs
-            set finished_at = ?, dirs_scanned = ?, new_files = ?, new_dirs = ?, errors = ?
+            set finished_at = ?, dirs_scanned = ?, new_files = ?, new_dirs = ?, errors = ?,
+                restored_files = ?, remote_missing = ?
             where id = ?
             """,
             (
@@ -249,6 +308,8 @@ class State:
                 stats["new_files"],
                 stats["new_dirs"],
                 stats["errors"],
+                stats["restored_files"],
+                stats["remote_missing"],
                 run_id,
             ),
         )
@@ -260,27 +321,35 @@ class State:
         reason: str,
         priority: int = 100,
         not_before: str | None = None,
-    ) -> None:
+        recursive: bool = False,
+        revive_dead: bool = False,
+    ) -> bool:
         path = normalize_remote_path(remote_path)
+        if revive_dead:
+            self.conn.execute("delete from dead_letter where remote_path = ?", (path,))
+        elif self.conn.execute("select 1 from dead_letter where remote_path = ?", (path,)).fetchone():
+            return False
         when = not_before or utc_now()
         self.conn.execute(
             """
-            insert into dir_queue (remote_path, reason, priority, not_before, attempts, updated_at)
-            values (?, ?, ?, ?, 0, ?)
+            insert into dir_queue (remote_path, reason, priority, not_before, attempts, recursive, updated_at)
+            values (?, ?, ?, ?, 0, ?, ?)
             on conflict(remote_path) do update set
                 reason = excluded.reason,
                 priority = min(dir_queue.priority, excluded.priority),
                 not_before = min(dir_queue.not_before, excluded.not_before),
+                recursive = max(dir_queue.recursive, excluded.recursive),
                 updated_at = excluded.updated_at
             """,
-            (path, reason, priority, when, utc_now()),
+            (path, reason, priority, when, 1 if recursive else 0, utc_now()),
         )
         self.conn.commit()
+        return True
 
-    def pop_dirs(self, limit: int) -> list[str]:
+    def pop_dirs(self, limit: int) -> list[sqlite3.Row]:
         rows = self.conn.execute(
             """
-            select remote_path
+            select remote_path, reason, attempts, recursive
             from dir_queue
             where not_before <= ?
             order by priority asc, updated_at asc
@@ -291,20 +360,31 @@ class State:
         paths = [row["remote_path"] for row in rows]
         self.conn.executemany("delete from dir_queue where remote_path = ?", [(p,) for p in paths])
         self.conn.commit()
-        return paths
+        return rows
 
-    def mark_dir_failed(self, path: str, reason: str, retry_after_minutes: int) -> None:
+    def mark_dir_failed(
+        self,
+        path: str,
+        reason: str,
+        retry_after_minutes: int,
+        attempts: int,
+        max_attempts: int,
+        recursive: bool = False,
+    ) -> bool:
         not_before = (datetime.utcnow() + timedelta(minutes=retry_after_minutes)).replace(microsecond=0).isoformat() + "Z"
-        row = self.conn.execute(
-            "select attempts from dir_queue where remote_path = ?",
-            (normalize_remote_path(path),),
-        ).fetchone()
-        attempts = int(row["attempts"]) + 1 if row else 1
+        attempts += 1
+        if attempts >= max_attempts:
+            self.conn.execute(
+                "insert or replace into dead_letter (remote_path, reason, attempts, failed_at) values (?, ?, ?, ?)",
+                (normalize_remote_path(path), reason[:1000], attempts, utc_now()),
+            )
+            self.conn.commit()
+            return True
         priority = min(500, 100 + attempts * 25)
         self.conn.execute(
             """
-            insert into dir_queue (remote_path, reason, priority, not_before, attempts, updated_at)
-            values (?, ?, ?, ?, ?, ?)
+            insert into dir_queue (remote_path, reason, priority, not_before, attempts, recursive, updated_at)
+            values (?, ?, ?, ?, ?, ?, ?)
             on conflict(remote_path) do update set
                 reason = excluded.reason,
                 priority = excluded.priority,
@@ -312,9 +392,10 @@ class State:
                 attempts = excluded.attempts,
                 updated_at = excluded.updated_at
             """,
-            (normalize_remote_path(path), reason, priority, not_before, attempts, utc_now()),
+            (normalize_remote_path(path), reason, priority, not_before, attempts, 1 if recursive else 0, utc_now()),
         )
         self.conn.commit()
+        return False
 
     def get_entry(self, path: str) -> sqlite3.Row | None:
         return self.conn.execute(
@@ -352,6 +433,7 @@ class State:
                 sign = excluded.sign,
                 strm_path = coalesce(excluded.strm_path, entries.strm_path),
                 strm_created = max(entries.strm_created, excluded.strm_created),
+                missing_remote_since = null,
                 last_seen_at = excluded.last_seen_at
             """,
             (
@@ -385,6 +467,80 @@ class State:
             (cutoff, due_before, limit),
         ).fetchall()
         return [row["parent_path"] for row in rows]
+
+    def cold_dirs_due(self, recheck_days: int, limit: int) -> list[str]:
+        if limit <= 0:
+            return []
+        due_before = (datetime.utcnow() - timedelta(days=recheck_days)).replace(microsecond=0).isoformat() + "Z"
+        rows = self.conn.execute(
+            """
+            select remote_path from entries
+            where is_dir = 1 and (last_scanned_at is null or last_scanned_at <= ?)
+            order by coalesce(last_scanned_at, first_seen_at) asc
+            limit ?
+            """,
+            (due_before, limit),
+        ).fetchall()
+        return [row["remote_path"] for row in rows]
+
+    def mark_dir_scanned(self, path: str) -> None:
+        self.conn.execute(
+            "update entries set last_scanned_at = ?, last_seen_at = ? where remote_path = ?",
+            (utc_now(), utc_now(), normalize_remote_path(path)),
+        )
+        self.conn.commit()
+
+    def mark_remote_missing(self, parent_path: str, seen_paths: set[str]) -> list[sqlite3.Row]:
+        rows = self.conn.execute(
+            "select * from entries where parent_path = ? and is_dir = 0",
+            (normalize_remote_path(parent_path),),
+        ).fetchall()
+        missing = [row for row in rows if row["remote_path"] not in seen_paths]
+        self.conn.executemany(
+            "update entries set missing_remote_since = coalesce(missing_remote_since, ?) where remote_path = ?",
+            [(utc_now(), row["remote_path"]) for row in missing],
+        )
+        self.conn.commit()
+        return missing
+
+    def is_ignored(self, path: str) -> bool:
+        normalized = normalize_remote_path(path)
+        return bool(
+            self.conn.execute(
+                "select 1 from ignored_paths where ? = remote_path or ? like remote_path || '/%' limit 1",
+                (normalized, normalized),
+            ).fetchone()
+        )
+
+    def set_ignored(self, path: str, reason: str) -> None:
+        self.conn.execute(
+            "insert or replace into ignored_paths (remote_path, reason, created_at) values (?, ?, ?)",
+            (normalize_remote_path(path), reason, utc_now()),
+        )
+        self.conn.commit()
+
+    def clear_ignored(self, path: str) -> None:
+        self.conn.execute("delete from ignored_paths where remote_path = ?", (normalize_remote_path(path),))
+        self.conn.commit()
+
+    def strm_paths_under(self, path: str) -> list[str]:
+        normalized = normalize_remote_path(path)
+        rows = self.conn.execute(
+            "select strm_path from entries where strm_path is not null and (remote_path = ? or remote_path like ?)",
+            (normalized, normalized.rstrip("/") + "/%"),
+        ).fetchall()
+        return [row["strm_path"] for row in rows if row["strm_path"]]
+
+    def summary(self) -> dict[str, Any]:
+        return {
+            "entries": self.conn.execute("select count(*) from entries").fetchone()[0],
+            "queued": self.conn.execute("select count(*) from dir_queue").fetchone()[0],
+            "dead": self.conn.execute("select count(*) from dead_letter").fetchone()[0],
+            "ignored": self.conn.execute("select count(*) from ignored_paths").fetchone()[0],
+            "remote_missing": self.conn.execute(
+                "select count(*) from entries where missing_remote_since is not null"
+            ).fetchone()[0],
+        }
 
 
 def should_generate_strm(name: str, config: Config) -> bool:
@@ -426,7 +582,9 @@ def write_strm(remote_path: str, config: Config) -> Path:
     rel = safe_rel_path(media_path).with_suffix(".strm")
     target = config.strm_output_dir / rel
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(strm_url(remote_path, config) + "\n", encoding="utf-8")
+    temporary = target.with_name(target.name + ".tmp")
+    temporary.write_text(strm_url(remote_path, config) + "\n", encoding="utf-8")
+    temporary.replace(target)
     return target
 
 
@@ -443,32 +601,81 @@ def needs_strm(existing: sqlite3.Row | None, is_new: bool) -> bool:
 
 def seed_watch_dirs(state: State, config: Config) -> None:
     for path in config.watch_dirs:
-        state.queue_dir(path, "watch_dir", priority=50)
+        state.queue_dir(path, "watch_dir", priority=50, recursive=False)
 
 
-def refresh_one_dir(client: AlistClient, state: State, config: Config, path: str) -> dict[str, int]:
-    stats = {"new_files": 0, "new_dirs": 0}
+def item_changed(existing: sqlite3.Row | None, size: int | None, modified: str | None, sign: str | None) -> bool:
+    if existing is None:
+        return True
+    return any(
+        existing[key] != value
+        for key, value in (("size", size), ("modified", modified), ("sign", sign))
+        if value is not None
+    )
+
+
+def apply_remote_delete_policy(row: sqlite3.Row, config: Config) -> None:
+    if config.remote_delete_policy == "keep" or not row["strm_path"]:
+        return
+    missing_since = row["missing_remote_since"]
+    if not missing_since:
+        return
+    missing_at = datetime.fromisoformat(missing_since.rstrip("Z"))
+    if datetime.utcnow() - missing_at < timedelta(days=config.remote_delete_grace_days):
+        return
+    target = Path(row["strm_path"])
+    if not target.exists():
+        return
+    if config.remote_delete_policy == "delete":
+        target.unlink()
+    elif config.remote_delete_policy == "quarantine":
+        try:
+            relative = target.relative_to(config.strm_output_dir)
+        except ValueError:
+            relative = safe_rel_path(row["remote_path"]).with_suffix(".strm")
+        trash = config.strm_output_dir / ".xstrm-trash" / relative
+        trash.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(target), str(trash))
+
+
+def refresh_one_dir(
+    client: AlistClient, state: State, config: Config, path: str, recursive: bool = False
+) -> dict[str, int]:
+    stats = {"new_files": 0, "restored_files": 0, "new_dirs": 0, "remote_missing": 0}
     items = client.list_dir(path)
     state.upsert_entry(path, Path(path).name or "/", True, None, None, None)
+    seen_paths: set[str] = set()
 
     for item in items:
         name = item.get("name")
         if not name:
             continue
         child_path = remote_join(path, name)
+        seen_paths.add(child_path)
         is_dir = bool(item.get("is_dir"))
         size = item.get("size")
         modified = item.get("modified")
         sign = item.get("sign") or item.get("hashinfo") or item.get("thumb")
 
-        is_new = state.upsert_entry(child_path, name, is_dir, size, modified, str(sign) if sign else None)
+        previous = state.get_entry(child_path)
+        normalized_sign = str(sign) if sign else None
+        changed = item_changed(previous, size, modified, normalized_sign)
+        is_new = state.upsert_entry(child_path, name, is_dir, size, modified, normalized_sign)
         if is_dir:
             if is_new:
                 stats["new_dirs"] += 1
-            state.queue_dir(child_path, "child_dir_refresh", priority=60)
+            if recursive or is_new or changed:
+                state.queue_dir(
+                    child_path,
+                    "recursive_child" if recursive else "changed_child",
+                    priority=55 if recursive else 65,
+                    recursive=recursive or is_new,
+                )
             continue
 
         existing = state.get_entry(child_path)
+        if state.is_ignored(child_path):
+            continue
         if should_generate_strm(name, config) and needs_strm(existing, is_new):
             target = write_strm(child_path, config)
             state.upsert_entry(
@@ -481,7 +688,18 @@ def refresh_one_dir(client: AlistClient, state: State, config: Config, path: str
                 str(target),
                 True,
             )
-            stats["new_files"] += 1
+            if is_new:
+                stats["new_files"] += 1
+            else:
+                stats["restored_files"] += 1
+
+    state.mark_dir_scanned(path)
+    missing_rows = state.mark_remote_missing(path, seen_paths)
+    stats["remote_missing"] = len(missing_rows)
+    for row in missing_rows:
+        refreshed = state.get_entry(row["remote_path"])
+        if refreshed is not None:
+            apply_remote_delete_policy(refreshed, config)
 
     return stats
 
@@ -496,28 +714,47 @@ def run_once(config: Config) -> dict[str, int]:
         config.recheck_active_after_hours,
         max(1, config.max_dirs_per_run // 2),
     ):
-        state.queue_dir(path, "recent_active_dir", priority=90)
+        state.queue_dir(path, "recent_active_dir", priority=45)
+
+    for path in state.cold_dirs_due(config.cold_dir_recheck_days, config.cold_dirs_per_run):
+        state.queue_dir(path, "cold_integrity_check", priority=120)
 
     run_id = state.start_run()
-    stats = {"dirs_scanned": 0, "new_files": 0, "new_dirs": 0, "errors": 0}
+    stats = {
+        "dirs_scanned": 0,
+        "new_files": 0,
+        "restored_files": 0,
+        "new_dirs": 0,
+        "remote_missing": 0,
+        "errors": 0,
+    }
     try:
         while stats["dirs_scanned"] < config.max_dirs_per_run:
-            paths = state.pop_dirs(1)
-            if not paths:
+            queued = state.pop_dirs(1)
+            if not queued:
                 break
-            path = paths[0]
+            item = queued[0]
+            path = item["remote_path"]
+            stats["dirs_scanned"] += 1
             try:
-                result = refresh_one_dir(client, state, config, path)
-                stats["dirs_scanned"] += 1
-                stats["new_files"] += result["new_files"]
-                stats["new_dirs"] += result["new_dirs"]
+                result = refresh_one_dir(client, state, config, path, recursive=bool(item["recursive"]))
+                for key in ("new_files", "restored_files", "new_dirs", "remote_missing"):
+                    stats[key] += result[key]
                 sleep_for = config.request_interval_seconds + random.uniform(0, config.jitter_seconds)
                 if sleep_for > 0:
                     time.sleep(sleep_for)
             except Exception as exc:  # noqa: BLE001 - CLI should continue with other dirs.
                 stats["errors"] += 1
-                state.mark_dir_failed(path, str(exc), config.retry_after_minutes)
-                print(f"[WARN] {path}: {exc}", file=sys.stderr)
+                dead = state.mark_dir_failed(
+                    path,
+                    str(exc),
+                    config.retry_after_minutes,
+                    int(item["attempts"]),
+                    config.max_retry_attempts,
+                    bool(item["recursive"]),
+                )
+                suffix = "; moved to dead letter" if dead else ""
+                print(f"[WARN] {path}: {exc}{suffix}", file=sys.stderr)
     finally:
         state.finish_run(run_id, stats)
     return stats
@@ -525,8 +762,33 @@ def run_once(config: Config) -> dict[str, int]:
 
 def queue_dir(config: Config, remote_path: str, reason: str) -> None:
     state = State(config.state_db)
-    state.queue_dir(remote_path, reason, priority=40)
+    state.queue_dir(remote_path, reason, priority=30, recursive=True, revive_dead=True)
     print(f"queued {normalize_remote_path(remote_path)} ({reason})")
+
+
+def ignore_path(config: Config, remote_path: str, reason: str) -> None:
+    state = State(config.state_db)
+    path = normalize_remote_path(remote_path)
+    state.set_ignored(path, reason)
+    removed = 0
+    for strm_path in state.strm_paths_under(path):
+        target = Path(strm_path)
+        if target.exists():
+            target.unlink()
+            removed += 1
+    print(f"ignored {path} ({reason}); removed {removed} STRM files")
+
+
+def unignore_path(config: Config, remote_path: str) -> None:
+    state = State(config.state_db)
+    path = normalize_remote_path(remote_path)
+    state.clear_ignored(path)
+    state.queue_dir(remote_parent(path), "unignore_parent", priority=25, recursive=False, revive_dead=True)
+    print(f"unignored {path}; parent queued")
+
+
+def show_status(config: Config) -> None:
+    print(json.dumps(State(config.state_db).summary(), ensure_ascii=False, indent=2))
 
 
 def seconds_until_next_schedule(schedule_times: list[str]) -> int:
@@ -569,7 +831,7 @@ def daemon(config: Config, interval_minutes: int, use_schedule: bool) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Incrementally refresh Alist files into STRM files.")
-    parser.add_argument("--config", default="config.incremental-strm.json", help="Path to JSON config.")
+    parser.add_argument("--config", default="config/strm-sync.yaml", help="Path to YAML or JSON config.")
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("run-once", help="Run one incremental refresh cycle.")
@@ -577,6 +839,15 @@ def main() -> int:
     queue_parser = sub.add_parser("queue-dir", help="Add a directory to the high-priority refresh queue.")
     queue_parser.add_argument("remote_path")
     queue_parser.add_argument("--reason", default="manual")
+
+    ignore_parser = sub.add_parser("ignore-path", help="Ignore a remote file or directory and remove its STRM.")
+    ignore_parser.add_argument("remote_path")
+    ignore_parser.add_argument("--reason", default="manual")
+
+    unignore_parser = sub.add_parser("unignore-path", help="Remove an ignore rule and queue its parent.")
+    unignore_parser.add_argument("remote_path")
+
+    sub.add_parser("status", help="Show queue, dead-letter, ignore and remote-missing counts.")
 
     daemon_parser = sub.add_parser("daemon", help="Run repeatedly with a fixed interval.")
     daemon_parser.add_argument("--interval-minutes", type=int, default=120)
@@ -588,13 +859,22 @@ def main() -> int:
     if args.command == "queue-dir":
         queue_dir(config, args.remote_path, args.reason)
         return 0
+    if args.command == "ignore-path":
+        ignore_path(config, args.remote_path, args.reason)
+        return 0
+    if args.command == "unignore-path":
+        unignore_path(config, args.remote_path)
+        return 0
+    if args.command == "status":
+        show_status(config)
+        return 0
     if args.command == "daemon":
         daemon(config, args.interval_minutes, args.schedule)
         return 0
 
     stats = run_once(config)
     print(json.dumps(stats, ensure_ascii=False, indent=2))
-    return 0
+    return 2 if stats["errors"] else 0
 
 
 if __name__ == "__main__":

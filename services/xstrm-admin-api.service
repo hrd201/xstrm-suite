@@ -4,10 +4,19 @@ After=network.target
 
 [Service]
 Type=simple
+User=xstrm
+Group=xstrm
+SupplementaryGroups=docker
 WorkingDirectory=/opt/xstrm-suite
 ExecStart=/usr/bin/python3 /opt/xstrm-suite/scripts/admin_api.py
 Restart=always
 RestartSec=2
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/opt/xstrm-suite /emby-strm /mnt
 
 [Install]
 WantedBy=multi-user.target

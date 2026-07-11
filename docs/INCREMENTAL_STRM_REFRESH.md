@@ -17,28 +17,31 @@ It is designed for these cases:
 
 - Script: `scripts/incremental_strm_refresh.py`
 - Task wrapper: `scripts/task_incremental_refresh.sh`
-- Example config: `config/incremental-strm.json.example`
-- Runtime config: `config/incremental-strm.json`
+- Main config: `config/strm-sync.yaml`
+- Safe example: `config/strm-sync.yaml.example`
+- Legacy JSON example: `config/incremental-strm.json.example`
 - Suggested state database: `data/incremental-strm.sqlite3`
 
-The runtime config may contain AList tokens and local paths. Do not commit it.
+The runtime config may contain AList tokens and local paths. It is ignored by Git; only commit the `.example` files.
 
 ## How It Works
 
 1. `entries` stores known AList files and generated `.strm` paths.
 2. `dir_queue` stores candidate directories to refresh.
 3. Each run lists only queued directories, up to `incremental_refresh.max_dirs_per_run`.
-4. Subdirectories found during a refresh are queued and may be processed in the same run while the directory budget allows.
+4. Regular polling only queues new or metadata-changed children. Manual queue requests recurse so a show root reaches existing season folders.
 5. New media files generate `.strm` files and are recorded as active entries for later rechecks.
 6. If a media file is already indexed but its `.strm` file is missing, the refresher regenerates it.
-7. Recently active parent directories are periodically rechecked.
+7. Recently active parents are rechecked frequently; a bounded cold-directory sample provides eventual integrity coverage.
+8. Repeated failures move to a dead-letter table instead of retrying forever.
+9. Ignored paths are never regenerated, while remote-missing items follow the configured keep, quarantine, or delete policy.
 
 ## Configuration
 
 Copy the example:
 
 ```bash
-cp config/incremental-strm.json.example config/incremental-strm.json
+cp config/strm-sync.yaml.example config/strm-sync.yaml
 ```
 
 Edit these fields:
@@ -84,7 +87,7 @@ Queue a directory manually:
 
 ```bash
 python3 scripts/incremental_strm_refresh.py \
-  --config config/incremental-strm.json \
+  --config config/strm-sync.yaml \
   queue-dir "/mnt/cloud/series/Example Show" \
   --reason manual
 ```
@@ -93,7 +96,7 @@ Run one refresh cycle:
 
 ```bash
 python3 scripts/incremental_strm_refresh.py \
-  --config config/incremental-strm.json \
+  --config config/strm-sync.yaml \
   run-once
 ```
 
@@ -101,7 +104,7 @@ Run as a simple daemon with fixed intervals:
 
 ```bash
 python3 scripts/incremental_strm_refresh.py \
-  --config config/incremental-strm.json \
+  --config config/strm-sync.yaml \
   daemon --interval-minutes 120
 ```
 
@@ -109,7 +112,7 @@ Run as a daemon using configured times:
 
 ```bash
 python3 scripts/incremental_strm_refresh.py \
-  --config config/incremental-strm.json \
+  --config config/strm-sync.yaml \
   daemon --schedule
 ```
 
@@ -128,17 +131,13 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/xstrm-suite
-ExecStart=/usr/bin/python3 /opt/xstrm-suite/scripts/incremental_strm_refresh.py --config /opt/xstrm-suite/config/incremental-strm.json run-once
+ExecStart=/opt/xstrm-suite/scripts/task_incremental_refresh.sh
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
 ```
 
-If you want xstrm task locking and task status output, call the wrapper instead:
-
-```ini
-ExecStart=/opt/xstrm-suite/scripts/task_incremental_refresh.sh
-```
+The wrapper provides a shared write lock and Web task status.
 
 `/etc/systemd/system/xstrm-incremental-refresh.timer`:
 
@@ -191,4 +190,16 @@ systemctl enable --now xstrm-incremental-refresh.timer
 5. 发现新增媒体文件后生成 `.strm`，并记录为活跃条目，供后续复查。
 6. 如果数据库已记录媒体文件，但本地 `.strm` 缺失，会自动补生成。
 
-运行配置中可能包含 AList token 和本机路径，请只保留 `config/incremental-strm.json.example`，不要提交真实 `config/incremental-strm.json`。
+运行配置中可能包含 AList token 和本机路径。真实 `config/strm-sync.yaml` 已被 Git 忽略，只提交 `.example` 示例文件。
+
+永久删除某个版本前可执行：
+
+```bash
+python3 scripts/incremental_strm_refresh.py --config config/strm-sync.yaml ignore-path "/mnt/cloud/series/Example/Episode.mkv"
+```
+
+取消忽略并补生成：
+
+```bash
+python3 scripts/incremental_strm_refresh.py --config config/strm-sync.yaml unignore-path "/mnt/cloud/series/Example/Episode.mkv"
+```

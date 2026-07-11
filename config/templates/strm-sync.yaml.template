@@ -41,3 +41,18 @@ sources:
 emby2alist:
   media_mount_path:
 {{ mount.media_mount_path_yaml }}
+incremental_refresh:
+  enabled: true
+  state_db: {{ project.install_root }}/data/incremental-strm.sqlite3
+  schedule_times: ["02:30", "14:30"]
+  max_dirs_per_run: 20
+  request_interval_seconds: 3
+  jitter_seconds: 10
+  active_dir_ttl_days: 21
+  recheck_active_after_hours: 6
+  cold_dir_recheck_days: 7
+  cold_dirs_per_run: 4
+  retry_after_minutes: 30
+  max_retry_attempts: 3
+  remote_delete_policy: keep
+  remote_delete_grace_days: 7

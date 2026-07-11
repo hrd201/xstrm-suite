@@ -94,6 +94,7 @@ def main():
     (OUT_NGINX_DIR / 'conf.d' / 'constant.js.runtime').write_text(constant_js, encoding='utf-8')
     (OUT_NGINX_DIR / 'conf.d' / 'config' / 'constant-mount.runtime.js').write_text(constant_mount, encoding='utf-8')
     OUT_STRM_SYNC.write_text(strm_sync, encoding='utf-8')
+    OUT_STRM_SYNC.chmod(0o600)
     (OUT_NGINX_DIR / 'nginx.runtime.conf').write_text(nginx_patch, encoding='utf-8')
     OUT_SITES_DIR.mkdir(parents=True, exist_ok=True)
     for stale in ('xstrm-http.conf', 'xstrm-https.conf'):

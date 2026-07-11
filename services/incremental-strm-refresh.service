@@ -1,0 +1,20 @@
+[Unit]
+Description=Incremental AList STRM refresh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=xstrm
+Group=xstrm
+WorkingDirectory=/opt/xstrm-suite
+ExecStart=/opt/xstrm-suite/scripts/task_incremental_refresh.sh
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/opt/xstrm-suite /emby-strm /mnt
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
