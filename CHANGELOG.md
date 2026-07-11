@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-07-11
+
+### Added
+- Unified incremental refresh settings into `config/strm-sync.yaml`, while retaining JSON compatibility.
+- Added active and cold-directory scheduling, dead-letter handling, ignored paths, remote-missing tracking, and configurable remote deletion policy.
+- Added async Web tasks, queue health counters, explicit incremental/full-scan actions, and ignore/unignore controls.
+- Added automated regression tests and GitHub Actions checks.
+
+### Security
+- Removed tracked runtime credentials, generated runtime files, deployment hostnames, and backup artifacts; added safe example configs and CI secret checks.
+- Added POST request verification, atomic configuration writes, restrictive runtime permissions, service hardening, and upgrade backups.
+
+### Fixed
+- Regular polling no longer recursively requeues every known child directory.
+- New and restored STRM files are reported separately, and partial directory failures return a non-zero exit status.
+- Upgrade and rebuild failures now preserve production data and produce accurate task state.
+
+## [0.2.2] - 2026-06-23
+
+### Added
+- **Queue-based incremental STRM refresh**: Added `scripts/incremental_strm_refresh.py`, which keeps a local SQLite index and refreshes only queued candidate directories instead of recursively scanning every source.
+- **Task wrapper**: Added `scripts/task_incremental_refresh.sh` for lock-protected task execution with existing xstrm task status output.
+- **Missing STRM regeneration**: If Emby deletes a local `.strm` file but the media still exists in AList, the incremental refresher can regenerate the missing `.strm` during the next directory refresh.
+- **Refresh queue controls**: Added support for manual directory queueing, active parent directory rechecks, request intervals, jitter, retry delays, and scheduled daemon mode.
+- **Example configuration and documentation**: Added `config/incremental-strm.json.example` and `docs/INCREMENTAL_STRM_REFRESH.md` with generic placeholders and systemd timer examples.
+
+### Security
+- Added ignore rules for real incremental refresh configs and SQLite state files so local AList tokens and runtime state are not committed accidentally.
+
+### Fixed
+- Incremental refresh now keeps consuming newly queued child directories within the same run budget, so refreshing a show folder can discover media added under season subdirectories.
+- Avoided immediately requeueing the directory currently being scanned after generating a new `.strm`, reducing duplicate requests in the same run.
+
 ## [0.2.1]2026-04-26
 
 ### Added

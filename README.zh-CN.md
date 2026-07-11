@@ -23,6 +23,7 @@ xstrm-suite 旨在解决 Emby 配合网盘使用时遇到的常见问题：
 - **AList 集成**：直接集成 AList 进行媒体扫描
 - **自动 STRM 生成**：自动为媒体库生成 `.strm` 文件
 - **增量同步**：仅生成缺失的 STRM 文件，跳过已存在的
+- **队列式增量刷新**：只刷新候选目录，并在 Emby 删除本地 `.strm` 后按需补生成
 - **状态管理**：跟踪已生成的文件以避免重复
 - **灵活扫描**：扫描所有来源或指定单独目录
 - **扩展媒体格式支持**：支持常见视频和音频格式，包括 `.mp4`、`.mkv`、`.mov`、`.webm`、`.mp3`、`.m4a`、`.flac`、`.aac`、`.ape`、`.wav`、`.ogg` 等
@@ -256,6 +257,38 @@ STRM 文件:     /emby-strm/115/电影/角斗士2 Gladiator II/GladiatorII.strm
                ↓ (内容)
 STRM 内容:     /115/电影/角斗士2 Gladiator II/GladiatorII.mkv
 ```
+
+## 队列式增量刷新
+
+日常更新可以使用 `scripts/incremental_strm_refresh.py`。它只轮询监控根目录、近期活跃目录和少量冷目录；普通定时任务仅深入新建或元数据变化的子目录，手工加入的剧集父目录仍会递归扫描季目录。
+
+适用场景：
+
+- 新剧集加入到原有剧集目录中；
+- 新置顶目录需要优先处理；
+- Emby 删除了本地 `.strm`，但远程媒体仍然存在，需要自动补生成；
+- 希望限制 AList 请求量，并通过间隔和随机抖动降低网盘风控风险。
+
+快速使用：
+
+```bash
+cp config/strm-sync.yaml.example config/strm-sync.yaml
+vim config/strm-sync.yaml
+python3 scripts/incremental_strm_refresh.py --config config/strm-sync.yaml run-once
+```
+
+手动加入一个高优先级目录：
+
+```bash
+python3 scripts/incremental_strm_refresh.py \
+  --config config/strm-sync.yaml \
+  queue-dir "/mnt/cloud/series/Example Show" \
+  --reason manual
+```
+
+更多配置、路径映射和 systemd 定时器示例见 [Incremental STRM Refresh](./docs/INCREMENTAL_STRM_REFRESH.md)。
+
+如果要永久删除 Emby 中不需要的影片版本，请先使用 `ignore-path`。被忽略的路径不会再次补生成；`unignore-path` 会取消忽略并安排父目录复查。远程删除会单独记录，并可配置为保留、隔离或在宽限期后删除。
 
 ### 支持的媒体扩展名
 

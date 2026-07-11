@@ -37,6 +37,7 @@ def load_runtime() -> dict:
 def save_runtime(data: dict):
     RUNTIME_PATH.parent.mkdir(parents=True, exist_ok=True)
     RUNTIME_PATH.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding='utf-8')
+    RUNTIME_PATH.chmod(0o600)
 
 
 def main():

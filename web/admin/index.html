@@ -8,16 +8,20 @@
     :root { color-scheme: dark; }
     body { font-family: system-ui, sans-serif; margin: 0; background: #0b1220; color: #e5e7eb; }
     .wrap { max-width: 980px; margin: 0 auto; padding: 24px; }
-    .card { background: #111827; border: 1px solid #374151; border-radius: 14px; padding: 18px; margin-bottom: 16px; }
+    .card { background: #111827; border: 1px solid #374151; border-radius: 8px; padding: 18px; margin-bottom: 16px; }
     h1,h2,h3 { margin: 0 0 12px; }
     .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-    .kv { font-size: 14px; line-height: 1.7; }
+    .kv { font-size: 14px; line-height: 1.7; overflow-wrap:anywhere; }
     .actions { display: flex; flex-wrap: wrap; gap: 10px; }
-    button { background: #2563eb; color: white; border: 0; border-radius: 10px; padding: 10px 14px; cursor: pointer; font-size: 14px; }
+    button { background: #2563eb; color: white; border: 0; border-radius: 8px; padding: 10px 14px; cursor: pointer; font-size: 14px; }
     button.secondary { background: #374151; }
     button.danger { background: #dc2626; }
     button:disabled { opacity: .6; cursor: not-allowed; }
-    input, select { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; border: 1px solid #4b5563; background: #0f172a; color: #e5e7eb; }
+    input, select { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; border: 1px solid #4b5563; background: #0f172a; color: #e5e7eb; }
+    .section-nav { position:sticky; top:0; z-index:10; display:flex; gap:8px; padding:10px 0; background:#0b1220; overflow:auto; }
+    .section-nav button.active { background:#2563eb; }
+    .page-section { display:none; }
+    .page-section.active { display:block; }
     pre { white-space: pre-wrap; word-break: break-word; background: #020617; border-radius: 10px; padding: 12px; min-height: 180px; max-height: 420px; overflow: auto; }
     .muted { color: #9ca3af; font-size: 13px; }
     .ok { color: #34d399; }
@@ -45,6 +49,14 @@
       </div>
     </div>
 
+    <nav class="section-nav" aria-label="管理区域">
+      <button class="secondary active" data-section="overview">概览</button>
+      <button class="secondary" data-section="tasks">扫描任务</button>
+      <button class="secondary" data-section="sources">媒体源</button>
+      <button class="secondary" data-section="settings">设置</button>
+    </nav>
+
+    <section class="page-section active" data-panel="overview">
     <div class="card">
       <div class="toolbar">
         <h2>当前状态</h2>
@@ -62,9 +74,17 @@
     </div>
 
     <div class="card">
+      <div class="toolbar"><h2>最近日志</h2><button id="logBtn" class="secondary">刷新日志</button></div>
+      <pre id="logBox">加载中...</pre>
+    </div>
+    </section>
+
+    <section class="page-section" data-panel="tasks">
+    <div class="card">
       <h2>任务操作</h2>
       <div class="actions" style="margin-bottom:12px;">
         <button id="scanBtn">扫描新增影片</button>
+        <button id="scanFullBtn" class="secondary">完整校验</button>
         <button id="rebuildBtn" class="danger">全量重建</button>
       </div>
 
@@ -74,6 +94,11 @@
           <input id="pathInput" placeholder="例如 /mnt/115/电影 或 /mnt/115/电影/角斗士2 Gladiator II" />
           <button id="scanPathBtn">执行指定目录扫描</button>
         </div>
+      </div>
+
+      <div class="actions" style="margin-top:10px;">
+        <button id="ignorePathBtn" class="danger">忽略所填影片</button>
+        <button id="unignorePathBtn" class="secondary">取消忽略</button>
       </div>
 
       <div style="margin-top:12px; margin-bottom:12px;">
@@ -99,7 +124,9 @@
 
       <p class="muted" style="margin-top:12px;">说明：全量重建会删除旧 .strm 并重新生成，建议谨慎操作。管理入口建议继续通过 nginx 访问控制或 Basic Auth 保护。</p>
     </div>
+    </section>
 
+    <section class="page-section" data-panel="settings">
     <div class="card">
       <h2>生成配置</h2>
       <p class="muted">xstrm 只作为独立的 strm 生成工具存在。这里配置它读取哪套 nginx 参数，以及 strm 文件写成什么格式。</p>
@@ -140,7 +167,9 @@
         <button id="changePasswordBtn" class="secondary">更新管理密码</button>
       </div>
     </div>
+    </section>
 
+    <section class="page-section" data-panel="sources">
     <div class="card">
       <div class="toolbar">
         <h2>同步源列表</h2>
@@ -166,16 +195,7 @@
       <div id="strmHealthSummary" class="grid" style="margin-bottom:12px;"></div>
       <pre id="strmHealthBox">点击“执行健康扫描”开始。</pre>
     </div>
-
-    <div class="card">
-      <div class="toolbar">
-        <h2>最近日志</h2>
-        <div class="actions">
-          <button id="logBtn" class="secondary">刷新日志</button>
-        </div>
-      </div>
-      <pre id="logBox">加载中...</pre>
-    </div>
+    </section>
   </div>
 
   <div id="toast" class="toast"></div>
@@ -186,9 +206,12 @@
     const refreshBtn = document.getElementById('refreshBtn');
     const logBtn = document.getElementById('logBtn');
     const scanBtn = document.getElementById('scanBtn');
+    const scanFullBtn = document.getElementById('scanFullBtn');
     const rebuildBtn = document.getElementById('rebuildBtn');
     const scanPathBtn = document.getElementById('scanPathBtn');
     const pathInput = document.getElementById('pathInput');
+    const ignorePathBtn = document.getElementById('ignorePathBtn');
+    const unignorePathBtn = document.getElementById('unignorePathBtn');
     const browseRootBtn = document.getElementById('browseRootBtn');
     const useBrowsePathBtn = document.getElementById('useBrowsePathBtn');
     const browsePathBtn = document.getElementById('browsePathBtn');
@@ -232,10 +255,10 @@
     }
 
     function setButtonsDisabled(disabled) {
-      [refreshBtn, logBtn, scanBtn, rebuildBtn, scanPathBtn, browseRootBtn, useBrowsePathBtn, browsePathBtn, refreshSettingsBtn, saveSettingsBtn, changePasswordBtn, refreshSourcesBtn, saveSourcesBtn, addSourceBtn, strmHealthBtn].forEach(btn => btn && (btn.disabled = disabled));
+      [refreshBtn, logBtn, scanBtn, scanFullBtn, rebuildBtn, scanPathBtn, ignorePathBtn, unignorePathBtn, browseRootBtn, useBrowsePathBtn, browsePathBtn, refreshSettingsBtn, saveSettingsBtn, changePasswordBtn, refreshSourcesBtn, saveSourcesBtn, addSourceBtn, strmHealthBtn].forEach(btn => btn && (btn.disabled = disabled));
     }
 
-    function renderStatus(data) {
+    function renderStatus(data, incremental={}) {
       const s = data?.status || {};
       const stateText = s.running ? '<span class="running">执行中</span>' : (s.success === false ? '<span class="bad">失败</span>' : '<span class="ok">空闲/成功</span>');
       statusEl.innerHTML = `
@@ -246,10 +269,17 @@
         <div class="card kv"><strong>结束时间</strong><br>${escapeHtml(s.finished_at || '-')}</div>
         <div class="card kv"><strong>日志文件</strong><br>${escapeHtml(s.log_file || '-')}</div>
         <div class="card kv"><strong>扫描源</strong><br>${escapeHtml((s.sources || []).join(' / ') || '-')}</div>
+        <div class="card kv"><strong>增量队列</strong><br>${escapeHtml(incremental.queued ?? '-')}</div>
+        <div class="card kv"><strong>失败目录</strong><br><span class="${incremental.dead ? 'bad' : 'ok'}">${escapeHtml(incremental.dead ?? '-')}</span></div>
+        <div class="card kv"><strong>已忽略</strong><br>${escapeHtml(incremental.ignored ?? '-')}</div>
+        <div class="card kv"><strong>远程缺失</strong><br>${escapeHtml(incremental.remote_missing ?? '-')}</div>
       `;
     }
 
     async function fetchJson(url, options={}) {
+      if (options.method && options.method !== 'GET') {
+        options.headers = {...(options.headers || {}), 'X-XSTRM-Requested-With': 'xstrm-admin'};
+      }
       const res = await fetch(url, options);
       const contentType = res.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) {
@@ -263,8 +293,11 @@
     }
 
     async function loadStatus() {
-      const data = await fetchJson('/api/admin/xstrm/status');
-      renderStatus(data);
+      const [data, incrementalData] = await Promise.all([
+        fetchJson('/api/admin/xstrm/status'),
+        fetchJson('/api/admin/xstrm/incremental/status').catch(() => ({incremental:{}}))
+      ]);
+      renderStatus(data, incrementalData.incremental || {});
       return data;
     }
 
@@ -569,11 +602,22 @@
     };
 
     scanBtn.onclick = () => runAction('/api/admin/xstrm/scan', null, null, '已触发增量扫描');
+    scanFullBtn.onclick = () => runAction('/api/admin/xstrm/scan-full', null, null, '已触发完整校验');
     rebuildBtn.onclick = () => runAction('/api/admin/xstrm/rebuild', null, '确认执行全量重建？这会删除旧 .strm 并重新生成。', '已触发全量重建');
     scanPathBtn.onclick = () => {
       const path = pathInput.value.trim();
       if (!path) return showToast('请先输入目录', 'bad');
       runAction('/api/admin/xstrm/scan-path', {path}, null, '已触发指定目录扫描');
+    };
+    ignorePathBtn.onclick = () => {
+      const path = pathInput.value.trim();
+      if (!path) return showToast('请先填写要忽略的影片或目录', 'bad');
+      runAction('/api/admin/xstrm/ignore', {path}, '确认忽略该路径并删除已生成的 STRM？', '已加入忽略列表');
+    };
+    unignorePathBtn.onclick = () => {
+      const path = pathInput.value.trim();
+      if (!path) return showToast('请先填写要取消忽略的路径', 'bad');
+      runAction('/api/admin/xstrm/unignore', {path}, null, '已取消忽略并安排补生成');
     };
     changePasswordBtn.onclick = async () => {
       const password = newPasswordInput.value.trim();
@@ -599,6 +643,13 @@
     };
 
     autoRefreshSelect.onchange = () => setAutoRefresh(Number(autoRefreshSelect.value));
+
+    document.querySelectorAll('[data-section]').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('[data-section]').forEach(x => x.classList.toggle('active', x === btn));
+        document.querySelectorAll('[data-panel]').forEach(x => x.classList.toggle('active', x.dataset.panel === btn.dataset.section));
+      };
+    });
 
     renderPathHistory();
     Promise.all([loadStatus(), loadLogs(), loadSettings(), loadSources(), browseAlist('/')]).then(() => {

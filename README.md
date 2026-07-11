@@ -23,6 +23,7 @@ xstrm-suite is designed to solve common challenges when using Emby with cloud st
 - **AList Integration**: Direct interaction with AList API for file listing and link resolution.
 - **Automatic STRM Generation**: Automatically generates `.strm` files for your media library
 - **Incremental Sync**: Only generates missing STRM files, skips existing ones
+- **Queue-Based Incremental Refresh**: Refreshes only candidate directories and regenerates missing `.strm` files when Emby deletes them
 - **State Management**: Tracks generated files to avoid duplicates
 - **Flexible Scanning**: Scan all sources or specify individual directories
 - **Extended Media Extension Support**: Supports common video and audio formats including `.mp4`, `.mkv`, `.mov`, `.webm`, `.mp3`, `.m4a`, `.flac`, `.aac`, `.ape`, `.wav`, `.ogg`, and more
@@ -256,6 +257,38 @@ STRM File:     /emby-strm/115/电影/角斗士2 Gladiator II/GladiatorII.strm
                ↓ (content)
 STRM Content:  /115/电影/角斗士2 Gladiator II/GladiatorII.mkv
 ```
+
+## Queue-Based Incremental Refresh
+
+For daily updates, `scripts/incremental_strm_refresh.py` polls watch roots, active directories, and a small cold-directory sample. It only descends into new or changed child directories; manually queued show folders still recurse through season folders.
+
+This is useful when:
+
+- new episodes are added to an existing show directory;
+- a newly pinned directory should be processed first;
+- Emby deletes a local `.strm` file and it should be regenerated only if the remote media still exists;
+- AList requests need rate limits and jitter to reduce cloud-drive account risk.
+
+Quick setup:
+
+```bash
+cp config/strm-sync.yaml.example config/strm-sync.yaml
+vim config/strm-sync.yaml
+python3 scripts/incremental_strm_refresh.py --config config/strm-sync.yaml run-once
+```
+
+Queue a specific directory:
+
+```bash
+python3 scripts/incremental_strm_refresh.py \
+  --config config/strm-sync.yaml \
+  queue-dir "/mnt/cloud/series/Example Show" \
+  --reason manual
+```
+
+See [Incremental STRM Refresh](./docs/INCREMENTAL_STRM_REFRESH.md) for configuration details, path mapping, and a systemd timer example.
+
+Use `ignore-path` before deleting an unwanted Emby version permanently. Ignored paths are not regenerated; `unignore-path` removes the rule and queues the parent directory. Remote removals are tracked separately and can be kept, quarantined, or deleted after a grace period.
 
 ### Supported Media Extensions
 
