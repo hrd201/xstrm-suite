@@ -3,49 +3,96 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>xstrm Admin</title>
+  <title>xstrm 管理中心</title>
   <style>
-    :root { color-scheme: dark; }
-    body { font-family: system-ui, sans-serif; margin: 0; background: #0b1220; color: #e5e7eb; }
-    .wrap { max-width: 980px; margin: 0 auto; padding: 24px; }
-    .card { background: #111827; border: 1px solid #374151; border-radius: 8px; padding: 18px; margin-bottom: 16px; }
-    h1,h2,h3 { margin: 0 0 12px; }
-    .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-    .kv { font-size: 14px; line-height: 1.7; overflow-wrap:anywhere; }
-    .actions { display: flex; flex-wrap: wrap; gap: 10px; }
-    button { background: #2563eb; color: white; border: 0; border-radius: 8px; padding: 10px 14px; cursor: pointer; font-size: 14px; }
-    button.secondary { background: #374151; }
-    button.danger { background: #dc2626; }
-    button:disabled { opacity: .6; cursor: not-allowed; }
-    input, select { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; border: 1px solid #4b5563; background: #0f172a; color: #e5e7eb; }
-    .section-nav { position:sticky; top:0; z-index:10; display:flex; gap:8px; padding:10px 0; background:#0b1220; overflow:auto; }
-    .section-nav button.active { background:#2563eb; }
+    :root {
+      color-scheme: dark;
+      --bg: #111312; --surface: #191c1a; --surface-2: #202421; --line: #343a36;
+      --text: #f1f4f1; --muted: #9fa8a1; --brand: #20b486; --brand-hover: #2ac796;
+      --blue: #4d9de0; --danger: #e45b5b; --warning: #e5ad45;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; background: var(--bg); color: var(--text); line-height: 1.5; }
+    body::before { content:""; display:block; height:3px; background:linear-gradient(90deg, var(--brand) 0 38%, var(--blue) 38% 68%, var(--warning) 68%); }
+    .wrap { width:min(1180px, 100%); margin: 0 auto; padding: 28px 28px 48px; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 20px; margin-bottom: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.12); }
+    h1,h2,h3 { margin: 0; letter-spacing: 0; }
+    h1 { font-size: 23px; font-weight: 720; }
+    h2 { font-size: 17px; font-weight: 680; }
+    h3 { font-size: 14px; font-weight: 650; }
+    p { margin: 8px 0 0; }
+    .grid { display: grid; gap: 1px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); background:var(--line); border:1px solid var(--line); border-radius:7px; overflow:hidden; }
+    .kv { min-width:0; padding:14px 16px; background:var(--surface-2); font-size:15px; line-height:1.45; overflow-wrap:anywhere; }
+    .kv strong { display:block; margin-bottom:5px; color:var(--muted); font-size:11px; font-weight:650; text-transform:uppercase; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    button { min-height:38px; background: var(--brand); color: #071c15; border: 1px solid transparent; border-radius: 6px; padding: 8px 13px; cursor: pointer; font:600 13px/1.2 inherit; transition:background .15s, border-color .15s, transform .15s; }
+    button:hover { background:var(--brand-hover); }
+    button:active { transform:translateY(1px); }
+    button.secondary { background: #282d29; color:var(--text); border-color:#414943; }
+    button.secondary:hover { background:#343b36; border-color:#586159; }
+    button.danger { background:transparent; color:#ff9191; border-color:#814141; }
+    button.danger:hover { background:#3a2323; }
+    button:disabled { opacity: .48; cursor: wait; transform:none; }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+    input, select { width: 100%; min-height:40px; padding: 9px 11px; border-radius: 6px; border: 1px solid #485049; background: #121513; color: var(--text); font:14px inherit; }
+    input::placeholder { color:#737d75; }
+    label.muted { display:block; margin-bottom:6px; }
+    .section-nav { position:sticky; top:0; z-index:10; display:flex; gap:2px; margin:20px 0 16px; padding:5px; background:rgba(25,28,26,.94); border:1px solid var(--line); border-radius:8px; overflow:auto; backdrop-filter:blur(10px); }
+    .section-nav button { min-width:112px; background:transparent; color:var(--muted); border:0; }
+    .section-nav button:hover { background:#252a26; color:var(--text); }
+    .section-nav button.active { background:#e8f8f1; color:#10271f; }
     .page-section { display:none; }
     .page-section.active { display:block; }
-    pre { white-space: pre-wrap; word-break: break-word; background: #020617; border-radius: 10px; padding: 12px; min-height: 180px; max-height: 420px; overflow: auto; }
-    .muted { color: #9ca3af; font-size: 13px; }
-    .ok { color: #34d399; }
-    .bad { color: #f87171; }
-    .running { color: #fbbf24; }
-    .pill { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12px; background: #1f2937; border: 1px solid #374151; }
+    pre { white-space: pre-wrap; word-break: break-word; background: #0c0f0d; border:1px solid #2b302c; border-radius: 6px; padding: 14px; min-height: 180px; max-height: 420px; overflow: auto; color:#c7d1ca; font-size:12px; line-height:1.65; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .ok { color: #55d9a9; }
+    .bad { color: #ff8585; }
+    .running { color: #f4c76d; }
+    .pill { display: inline-flex; align-items:center; gap:7px; border-radius: 999px; padding: 5px 10px; font-size: 11px; color:#b9c3bc; background: #191d1a; border: 1px solid #3b433d; }
+    .pill::before { content:""; width:7px; height:7px; border-radius:50%; background:var(--brand); box-shadow:0 0 0 3px rgba(32,180,134,.12); }
     .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-    .toast { position: fixed; right: 20px; bottom: 20px; max-width: 420px; background: #111827; border: 1px solid #374151; border-left: 4px solid #2563eb; padding: 12px 14px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.35); display: none; }
+    .toolbar + .grid, .toolbar + pre { margin-top:14px; }
+    .toast { position: fixed; z-index:100; right: 20px; bottom: 20px; max-width:min(420px, calc(100vw - 32px)); background: #242925; border: 1px solid #4b554d; border-left: 4px solid var(--blue); padding: 12px 14px; border-radius: 7px; box-shadow: 0 14px 40px rgba(0,0,0,.45); display: none; }
     .toast.show { display: block; }
     .toast.ok { border-left-color: #10b981; }
     .toast.bad { border-left-color: #ef4444; }
-    .two-col { display:grid; grid-template-columns: 1fr 180px; gap:10px; }
-    @media (max-width: 640px) { .two-col { grid-template-columns: 1fr; } }
+    .two-col { display:grid; grid-template-columns: minmax(0, 1fr) 190px; gap:8px; }
+    .browser-list { padding:4px 12px; margin-top:8px; min-height:80px; background:#151815; border:1px solid var(--line); border-radius:6px; }
+    .browser-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 4px; border-bottom:1px solid #303631; }
+    .browser-row:last-child { border-bottom:0; }
+    .browser-main { min-width:0; }
+    .browser-name { font-weight:620; overflow-wrap:anywhere; }
+    .source-row { background:#151815; border:1px solid var(--line); padding:12px; border-radius:6px; margin-top:10px; }
+    .source-fields { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .danger-zone { margin-top:18px; padding-top:14px; border-top:1px solid #4b3030; }
+    @media (max-width: 700px) {
+      .wrap { padding:20px 14px 36px; }
+      h1 { font-size:20px; }
+      .header-copy .muted { display:none; }
+      .section-nav { margin:16px -14px 14px; padding:5px 14px; border-left:0; border-right:0; border-radius:0; }
+      .section-nav button { min-width:auto; flex:1 0 auto; padding-inline:14px; }
+      .card { padding:15px; }
+      .grid { grid-template-columns:repeat(2, minmax(0,1fr)); }
+      .kv { padding:12px; font-size:14px; }
+      .two-col, .source-fields { grid-template-columns:1fr; }
+      .browser-row { align-items:flex-start; flex-direction:column; }
+      .browser-row .actions { width:100%; }
+      .browser-row .actions button { flex:1; }
+      .toast { right:16px; bottom:16px; }
+    }
+    @media (max-width: 420px) { .grid { grid-template-columns:1fr; } }
+    @media (prefers-reduced-motion: reduce) { * { scroll-behavior:auto!important; transition:none!important; } }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="toolbar">
-      <div>
-        <h1>xstrm Web 管理页</h1>
-        <p class="muted">第二版：自动刷新状态、执行反馈优化、指定目录历史、日志自动拉取。</p>
+      <div class="header-copy">
+        <h1>xstrm 管理中心</h1>
+        <p class="muted">增量生成、目录管理与运行状态</p>
       </div>
       <div>
-        <span class="pill">API: /api/admin/xstrm</span>
+        <span class="pill">服务已连接</span>
       </div>
     </div>
 
@@ -83,9 +130,8 @@
     <div class="card">
       <h2>任务操作</h2>
       <div class="actions" style="margin-bottom:12px;">
-        <button id="scanBtn">扫描新增影片</button>
+        <button id="scanBtn">立即扫描新增</button>
         <button id="scanFullBtn" class="secondary">完整校验</button>
-        <button id="rebuildBtn" class="danger">全量重建</button>
       </div>
 
       <div style="margin-top:8px; margin-bottom:10px;">
@@ -96,9 +142,10 @@
         </div>
       </div>
 
-      <div class="actions" style="margin-top:10px;">
+      <div class="actions danger-zone">
         <button id="ignorePathBtn" class="danger">忽略所填影片</button>
         <button id="unignorePathBtn" class="secondary">取消忽略</button>
+        <button id="rebuildBtn" class="danger">全量重建</button>
       </div>
 
       <div style="margin-top:12px; margin-bottom:12px;">
@@ -114,7 +161,7 @@
           <button id="browsePathBtn" class="secondary">浏览此目录</button>
         </div>
         <div id="browseBreadcrumb" class="actions" style="margin-top:8px;"></div>
-        <div id="browseList" class="card" style="padding:10px; margin-top:8px; min-height:80px;"></div>
+        <div id="browseList" class="browser-list"></div>
       </div>
 
       <div style="margin-top:12px;">
@@ -262,17 +309,17 @@
       const s = data?.status || {};
       const stateText = s.running ? '<span class="running">执行中</span>' : (s.success === false ? '<span class="bad">失败</span>' : '<span class="ok">空闲/成功</span>');
       statusEl.innerHTML = `
-        <div class="card kv"><strong>状态</strong><br>${stateText}</div>
-        <div class="card kv"><strong>任务</strong><br>${escapeHtml(s.task || '-')}</div>
-        <div class="card kv"><strong>消息</strong><br>${escapeHtml(s.message || '-')}</div>
-        <div class="card kv"><strong>开始时间</strong><br>${escapeHtml(s.started_at || '-')}</div>
-        <div class="card kv"><strong>结束时间</strong><br>${escapeHtml(s.finished_at || '-')}</div>
-        <div class="card kv"><strong>日志文件</strong><br>${escapeHtml(s.log_file || '-')}</div>
-        <div class="card kv"><strong>扫描源</strong><br>${escapeHtml((s.sources || []).join(' / ') || '-')}</div>
-        <div class="card kv"><strong>增量队列</strong><br>${escapeHtml(incremental.queued ?? '-')}</div>
-        <div class="card kv"><strong>失败目录</strong><br><span class="${incremental.dead ? 'bad' : 'ok'}">${escapeHtml(incremental.dead ?? '-')}</span></div>
-        <div class="card kv"><strong>已忽略</strong><br>${escapeHtml(incremental.ignored ?? '-')}</div>
-        <div class="card kv"><strong>远程缺失</strong><br>${escapeHtml(incremental.remote_missing ?? '-')}</div>
+        <div class="kv"><strong>状态</strong>${stateText}</div>
+        <div class="kv"><strong>任务</strong>${escapeHtml(s.task || '-')}</div>
+        <div class="kv"><strong>消息</strong>${escapeHtml(s.message || '-')}</div>
+        <div class="kv"><strong>开始时间</strong>${escapeHtml(s.started_at || '-')}</div>
+        <div class="kv"><strong>结束时间</strong>${escapeHtml(s.finished_at || '-')}</div>
+        <div class="kv"><strong>日志文件</strong>${escapeHtml(s.log_file || '-')}</div>
+        <div class="kv"><strong>扫描源</strong>${escapeHtml((s.sources || []).join(' / ') || '-')}</div>
+        <div class="kv"><strong>增量队列</strong>${escapeHtml(incremental.queued ?? '-')}</div>
+        <div class="kv"><strong>失败目录</strong><span class="${incremental.dead ? 'bad' : 'ok'}">${escapeHtml(incremental.dead ?? '-')}</span></div>
+        <div class="kv"><strong>已忽略</strong>${escapeHtml(incremental.ignored ?? '-')}</div>
+        <div class="kv"><strong>远程缺失</strong>${escapeHtml(incremental.remote_missing ?? '-')}</div>
       `;
     }
 
@@ -309,10 +356,10 @@
 
     function renderStrmHealth(report) {
       strmHealthSummaryEl.innerHTML = `
-        <div class="card kv"><strong>STRM 总数</strong><br>${escapeHtml(report?.total_strm_items ?? 0)}</div>
-        <div class="card kv"><strong>可重定向</strong><br><span class="ok">${escapeHtml(report?.healthy_redirect ?? 0)}</span></div>
-        <div class="card kv"><strong>缺失文件</strong><br><span class="${(report?.missing_file || 0) ? 'bad' : 'ok'}">${escapeHtml(report?.missing_file ?? 0)}</span></div>
-        <div class="card kv"><strong>失败项</strong><br><span class="${(report?.failed_non_redirect || 0) ? 'bad' : 'ok'}">${escapeHtml(report?.failed_non_redirect ?? 0)}</span></div>
+        <div class="kv"><strong>STRM 总数</strong>${escapeHtml(report?.total_strm_items ?? 0)}</div>
+        <div class="kv"><strong>可重定向</strong><span class="ok">${escapeHtml(report?.healthy_redirect ?? 0)}</span></div>
+        <div class="kv"><strong>缺失文件</strong><span class="${(report?.missing_file || 0) ? 'bad' : 'ok'}">${escapeHtml(report?.missing_file ?? 0)}</span></div>
+        <div class="kv"><strong>失败项</strong><span class="${(report?.failed_non_redirect || 0) ? 'bad' : 'ok'}">${escapeHtml(report?.failed_non_redirect ?? 0)}</span></div>
       `;
       strmHealthBox.textContent = JSON.stringify(report || {}, null, 2);
     }
@@ -330,12 +377,12 @@
         ? s.derived_sources.map(item => item.output_prefix || item.scan_path).join(' / ')
         : '未推导到默认扫描源';
       settingsSummaryEl.innerHTML = `
-        <div class="card kv"><strong>当前读取到的 nginx profile</strong><br>${escapeHtml(profile?.source_root || s?.profile_root || '-')}</div>
-        <div class="card kv"><strong>当前推导出的 strm 模式</strong><br>${escapeHtml(s?.resolved_strm_mode || '-')}</div>
-        <div class="card kv"><strong>预期生成示例</strong><br>${escapeHtml(s?.expected_target_example || '-')}</div>
-        <div class="card kv"><strong>挂载根</strong><br>${escapeHtml(mountPaths.join(' / ') || '-')}</div>
-        <div class="card kv" style="grid-column:1/-1;"><strong>默认扫描源推导预览</strong><br>${escapeHtml(sourcePreview)}</div>
-        ${profileError ? `<div class="card kv bad" style="grid-column:1/-1;"><strong>profile 读取错误</strong><br>${escapeHtml(profileError)}</div>` : ''}
+        <div class="kv"><strong>nginx profile</strong>${escapeHtml(profile?.source_root || s?.profile_root || '-')}</div>
+        <div class="kv"><strong>STRM 模式</strong>${escapeHtml(s?.resolved_strm_mode || '-')}</div>
+        <div class="kv"><strong>生成示例</strong>${escapeHtml(s?.expected_target_example || '-')}</div>
+        <div class="kv"><strong>挂载根</strong>${escapeHtml(mountPaths.join(' / ') || '-')}</div>
+        <div class="kv" style="grid-column:1/-1;"><strong>默认扫描源推导预览</strong>${escapeHtml(sourcePreview)}</div>
+        ${profileError ? `<div class="kv bad" style="grid-column:1/-1;"><strong>profile 读取错误</strong>${escapeHtml(profileError)}</div>` : ''}
       `;
     }
 
@@ -427,11 +474,11 @@
         return;
       }
       browseList.innerHTML = items.map(item => `
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 4px;border-bottom:1px solid #374151;">
-          <div>
-            <div>${item.is_dir ? '📁' : '🎞️'} <strong>${escapeHtml(item.name)}</strong></div>
+        <div class="browser-row">
+          <div class="browser-main">
+            <div class="browser-name">${item.is_dir ? '目录 · ' : '文件 · '}${escapeHtml(item.name)}</div>
             <div class="muted">${escapeHtml(item.path)}</div>
-            ${item.modified ? `<div class="muted" style="font-size:11px;">🕐 ${escapeHtml((item.modified || '').slice(0, 16).replace('T', ' '))}</div>` : ''}
+            ${item.modified ? `<div class="muted" style="font-size:11px;">更新于 ${escapeHtml((item.modified || '').slice(0, 16).replace('T', ' '))}</div>` : ''}
           </div>
           <div class="actions">
             ${item.is_dir ? `<button class="secondary" data-browse-path="${escapeHtml(item.path)}">进入</button><button class="secondary" data-use-path="${escapeHtml(item.path)}">选中</button>` : `<button class="secondary" data-use-path="${escapeHtml(item.path)}">填入</button>`}
@@ -468,8 +515,8 @@
         return;
       }
       sourcesListEl.innerHTML = sourcesData.map((src, idx) => `
-        <div style="background:#1f2937;padding:10px;border-radius:8px;margin-bottom:8px;">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div class="source-row">
+          <div class="source-fields">
             <div><label class="muted" style="font-size:12px;">扫描目录</label><input value="${escapeHtml(src.scan_path||'')}" data-idx="${idx}" data-field="scan_path" class="source-input" placeholder="/mnt/115/电影"></div>
             <div><label class="muted" style="font-size:12px;">输出前缀</label><input value="${escapeHtml(src.output_prefix||'')}" data-idx="${idx}" data-field="output_prefix" class="source-input" placeholder="/115/电影"></div>
           </div>

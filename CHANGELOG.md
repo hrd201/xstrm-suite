@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
 - Added async Web tasks, queue health counters, explicit incremental/full-scan actions, and ignore/unignore controls.
 - Added automated regression tests and GitHub Actions checks.
 
+### Changed
+- Redesigned the Web admin UI for clearer status scanning, safer task hierarchy, denser directory and source controls, and responsive desktop/mobile use.
+
 ### Security
 - Removed tracked runtime credentials, generated runtime files, deployment hostnames, and backup artifacts; added safe example configs and CI secret checks.
 - Added POST request verification, atomic configuration writes, restrictive runtime permissions, service hardening, and upgrade backups.
