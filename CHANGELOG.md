@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file.
 - Regular polling no longer recursively requeues every known child directory.
 - New and restored STRM files are reported separately, and partial directory failures return a non-zero exit status.
 - Upgrade and rebuild failures now preserve production data and produce accurate task state.
+- STRM health checks now read the rotated Emby key and service URLs from runtime configuration and discover a user dynamically.
+- NJS playback routing now normalizes non-string and repeated `MediaSourceId` query values before path lookup.
 
 ## [0.2.2] - 2026-06-23
 

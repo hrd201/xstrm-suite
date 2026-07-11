@@ -47,7 +47,8 @@ function getDefaultApiKey(rArgs) {
   // emby old TV client only use config.embyApiKey
   const embyApiKey = config.embyApiKey;
   if (!rArgs) { return embyApiKey; }
-  return rArgs["X-Emby-Token"] ?? (rArgs.api_key ?? embyApiKey);
+  const value = rArgs["X-Emby-Token"] ?? (rArgs.api_key ?? embyApiKey);
+  return Array.isArray(value) ? value[0] : value;
 }
 
 function getDeviceId(r) {
@@ -64,7 +65,8 @@ function getDeviceId(r) {
 }
 
 function getMediaSourceId(rArgs) {
-  return rArgs.MediaSourceId ? rArgs.MediaSourceId : rArgs.mediaSourceId;
+  const value = rArgs.MediaSourceId ? rArgs.MediaSourceId : rArgs.mediaSourceId;
+  return Array.isArray(value) ? value[0] : value;
 }
 
 // r only is PlaybackInfo

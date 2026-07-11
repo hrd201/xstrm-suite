@@ -616,7 +616,14 @@ async function fetchEmbyFilePath(itemInfoUri, itemId, Etag, mediaSourceId) {
           }
           // item.MediaSources on Emby has one, on Jellyfin has many!
           if (mediaSourceId) {
-            mediaSource = item.MediaSources.find((m) => m.Id == mediaSourceId);
+            const matchedMediaSource = item.MediaSources.find((m) => m.Id == mediaSourceId);
+            if (matchedMediaSource) {
+              mediaSource = matchedMediaSource;
+            }
+          }
+          if (!mediaSource) {
+            rvt.message = `error: emby_api item has no usable media source`;
+            return rvt;
           }
           rvt.path = mediaSource.Path;
           rvt.itemName = item.Name;

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import json
 import os
 import ssl
@@ -13,11 +14,9 @@ import yaml
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 CONFIG_PATH = BASE_DIR / 'config' / 'strm-sync.yaml'
+RUNTIME_PATH = BASE_DIR / 'config' / 'runtime.yaml'
 OUT_PATH = BASE_DIR / 'data' / 'strm-health-report.json'
-EMBY_URL = 'http://127.0.0.1:8096/emby'
-TEST_URL = 'https://127.0.0.1:8095'
 USER_AGENT = 'VidHub/2.2.2'
-USER_ID = 'a5fc8f5b7cf843dc8f9c3c904f937090'
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -26,11 +25,26 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def load_cfg():
-    return yaml.safe_load(CONFIG_PATH.read_text(encoding='utf-8')) or {}
+    sync = yaml.safe_load(CONFIG_PATH.read_text(encoding='utf-8')) or {}
+    runtime = yaml.safe_load(RUNTIME_PATH.read_text(encoding='utf-8')) or {} if RUNTIME_PATH.exists() else {}
+    return sync, runtime
 
 
-def emby_api_key(cfg):
-    return (cfg.get('emby2alist', {}) or {}).get('api_key') or 'YOUR_EMBY_API_KEY'
+def emby_api_key(sync_cfg, runtime_cfg):
+    key = (sync_cfg.get('emby2alist', {}) or {}).get('api_key') or (runtime_cfg.get('emby', {}) or {}).get('api_key')
+    if not key or key == 'YOUR_EMBY_API_KEY':
+        raise RuntimeError('Emby API key is not configured')
+    return key
+
+
+def service_urls(runtime_cfg):
+    emby = (runtime_cfg.get('emby', {}) or {}).get('host', 'http://127.0.0.1:8096').rstrip('/') + '/emby'
+    nginx = runtime_cfg.get('nginx', {}) or {}
+    if nginx.get('https_enabled'):
+        proxy = f"https://127.0.0.1:{int(nginx.get('https_port', 8095))}"
+    else:
+        proxy = f"http://127.0.0.1:{int(nginx.get('http_port', 8091))}"
+    return emby, proxy
 
 
 def fetch_json(url: str):
@@ -39,9 +53,16 @@ def fetch_json(url: str):
         return json.load(r)
 
 
-def main():
-    cfg = load_cfg()
-    api_key = emby_api_key(cfg)
+def main(limit: int = 0):
+    sync_cfg, runtime_cfg = load_cfg()
+    api_key = emby_api_key(sync_cfg, runtime_cfg)
+    emby_url, test_url = service_urls(runtime_cfg)
+    users = fetch_json(emby_url + '/Users?' + urllib.parse.urlencode({'api_key': api_key}))
+    admin = next((user for user in users if (user.get('Policy') or {}).get('IsAdministrator')), None)
+    user = admin or (users[0] if users else None)
+    if not user or not user.get('Id'):
+        raise RuntimeError('No Emby user is available for playback health checks')
+    user_id = user['Id']
     params = {
         'api_key': api_key,
         'Recursive': 'true',
@@ -49,7 +70,8 @@ def main():
         'Fields': 'Path,MediaSources',
         'Limit': '10000',
     }
-    url = EMBY_URL + '/Items?' + urllib.parse.urlencode(params)
+    params['UserId'] = user_id
+    url = emby_url + '/Items?' + urllib.parse.urlencode(params)
     data = fetch_json(url)
     items = data.get('Items', [])
 
@@ -69,6 +91,9 @@ def main():
                 'mediaSourceId': media_source_id,
                 'file_exists': bool(path and os.path.exists(path)),
             })
+    available_strm_items = len(strm_items)
+    if limit > 0:
+        strm_items = strm_items[:limit]
 
     opener = urllib.request.build_opener(
         urllib.request.HTTPSHandler(context=ssl._create_unverified_context()),
@@ -83,8 +108,8 @@ def main():
             continue
 
         test_url = (
-            f"{TEST_URL}/emby/videos/{item['id']}/stream.strm?AutoOpenLiveStream=false"
-            f"&UserId={USER_ID}&MaxStreamingBitrate=500000000&reqformat=json&IsPlayback=true"
+            f"{test_url}/emby/videos/{item['id']}/stream.strm?AutoOpenLiveStream=false"
+            f"&UserId={user_id}&MaxStreamingBitrate=500000000&reqformat=json&IsPlayback=true"
             f"&api_key={api_key}&MediaSourceId={urllib.parse.quote(item['mediaSourceId'])}&Static=true"
         )
         req = urllib.request.Request(test_url, headers={'User-Agent': USER_AGENT}, method='GET')
@@ -111,6 +136,7 @@ def main():
 
     report = {
         'generated_at': time.strftime('%Y-%m-%dT%H:%M:%S%z'),
+        'available_strm_items': available_strm_items,
         'total_strm_items': len(strm_items),
         'healthy_redirect': len(healthy),
         'missing_file': len(missing),
@@ -126,7 +152,9 @@ def main():
 
 if __name__ == '__main__':
     try:
-        main()
+        parser = argparse.ArgumentParser(description='Check Emby STRM files and proxy redirects.')
+        parser.add_argument('--limit', type=int, default=0, help='Check only the first N STRM items; 0 checks all.')
+        main(max(0, parser.parse_args().limit))
     except Exception as e:
         print(json.dumps({'ok': False, 'error': str(e)}, ensure_ascii=False), file=sys.stderr)
         sys.exit(1)
