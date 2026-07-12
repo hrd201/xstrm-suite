@@ -137,6 +137,10 @@ def alist_list_dir(path: str) -> tuple[bool, dict | str]:
     if data.get('code') != 200:
         return False, data.get('message') or data.get('msg') or 'AList API 错误'
     content = ((data.get('data') or {}).get('content') or [])
+    return True, {'path': target_path, 'items': normalize_alist_items(content, target_path)}
+
+
+def normalize_alist_items(content: list[dict], target_path: str) -> list[dict]:
     items = []
     for item in content:
         name = item.get('name') or ''
@@ -149,12 +153,15 @@ def alist_list_dir(path: str) -> tuple[bool, dict | str]:
             'path': child,
             'is_dir': is_dir,
             'size': item.get('size'),
+            'created': item.get('created') or item.get('created_at'),
             'modified': item.get('modified') or item.get('updated_at') or item.get('updated'),
         })
-    # 先按修改日期降序（新→旧），再按类型稳定排序（目录在前）
-    items.sort(key=lambda x: x.get('modified') or '', reverse=True)
+    # Stable sorts produce: directories first, then newest creation/addition time.
+    # Modified time is only a fallback for providers that omit creation time.
+    items.sort(key=lambda x: x.get('name', '').casefold())
+    items.sort(key=lambda x: x.get('created') or x.get('modified') or '', reverse=True)
     items.sort(key=lambda x: not x['is_dir'])
-    return True, {'path': target_path, 'items': items}
+    return items
 
 
 class Handler(BaseHTTPRequestHandler):

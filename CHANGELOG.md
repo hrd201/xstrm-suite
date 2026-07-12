@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Redesigned the Web admin UI for clearer status scanning, safer task hierarchy, denser directory and source controls, and responsive desktop/mobile use.
+- AList browsing now keeps directories above files and sorts each group by creation/addition time, falling back to modification time when necessary.
 
 ### Security
 - Removed tracked runtime credentials, generated runtime files, deployment hostnames, and backup artifacts; added safe example configs and CI secret checks.

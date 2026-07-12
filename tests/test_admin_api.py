@@ -12,6 +12,32 @@ SPEC.loader.exec_module(MODULE)
 
 
 class AdminApiTests(unittest.TestCase):
+    def test_alist_items_sort_directories_first_by_creation_time(self):
+        content = [
+            {"name": "new-file.mkv", "is_dir": False, "created": "2026-07-12T12:00:00Z"},
+            {"name": "old-dir", "is_dir": True, "created": "2026-07-10T12:00:00Z"},
+            {"name": "new-dir", "is_dir": True, "created": "2026-07-11T12:00:00Z"},
+            {"name": "old-file.mkv", "is_dir": False, "created": "2026-07-09T12:00:00Z"},
+        ]
+
+        items = MODULE.normalize_alist_items(content, "/media")
+
+        self.assertEqual(
+            [item["name"] for item in items],
+            ["new-dir", "old-dir", "new-file.mkv", "old-file.mkv"],
+        )
+        self.assertEqual(items[0]["created"], "2026-07-11T12:00:00Z")
+
+    def test_alist_items_fall_back_to_modified_time(self):
+        content = [
+            {"name": "older", "is_dir": True, "modified": "2026-07-10T12:00:00Z"},
+            {"name": "newer", "is_dir": True, "modified": "2026-07-11T12:00:00Z"},
+        ]
+
+        items = MODULE.normalize_alist_items(content, "/media")
+
+        self.assertEqual([item["name"] for item in items], ["newer", "older"])
+
     def test_save_sync_config_replaces_file_atomically(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = Path(temp_dir) / "strm-sync.yaml"

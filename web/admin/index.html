@@ -440,14 +440,14 @@
       browsePathInput.value = currentBrowsePath;
       renderBrowseBreadcrumb(currentBrowsePath);
       const items = data.items || [];
-      // 目录在前，同类内按修改日期从新到旧排列
+      // 目录始终在前，同类内按添加/创建时间从新到旧排列。
       items.sort((a, b) => {
         if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
-        const ma = a.modified || '';
-        const mb = b.modified || '';
+        const ma = a.created || a.modified || '';
+        const mb = b.created || b.modified || '';
         if (mb > ma) return 1;
         if (mb < ma) return -1;
-        return 0;
+        return String(a.name || '').localeCompare(String(b.name || ''), 'zh-CN');
       });
       renderBrowseList(items);
       return data;
@@ -478,7 +478,7 @@
           <div class="browser-main">
             <div class="browser-name">${item.is_dir ? '目录 · ' : '文件 · '}${escapeHtml(item.name)}</div>
             <div class="muted">${escapeHtml(item.path)}</div>
-            ${item.modified ? `<div class="muted" style="font-size:11px;">更新于 ${escapeHtml((item.modified || '').slice(0, 16).replace('T', ' '))}</div>` : ''}
+            ${item.created || item.modified ? `<div class="muted" style="font-size:11px;">${item.created ? '添加于' : '更新于'} ${escapeHtml((item.created || item.modified || '').slice(0, 16).replace('T', ' '))}</div>` : ''}
           </div>
           <div class="actions">
             ${item.is_dir ? `<button class="secondary" data-browse-path="${escapeHtml(item.path)}">进入</button><button class="secondary" data-use-path="${escapeHtml(item.path)}">选中</button>` : `<button class="secondary" data-use-path="${escapeHtml(item.path)}">填入</button>`}
