@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
 - Added POST request verification, atomic configuration writes, restrictive runtime permissions, service hardening, and upgrade backups.
 
 ### Fixed
+- Web configuration saves no longer fail with a 502 response when the hardened admin service cannot create its atomic temporary file; install and upgrade paths now preserve writable config-directory ownership and API failures remain JSON.
 - Regular polling no longer recursively requeues every known child directory.
 - New and restored STRM files are reported separately, and partial directory failures return a non-zero exit status.
 - Upgrade and rebuild failures now preserve production data and produce accurate task state.

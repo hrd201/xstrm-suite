@@ -2,6 +2,7 @@
 import json
 import subprocess
 import sys
+import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib import request as urlrequest, error as urlerror
@@ -265,7 +266,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         return self._handle_get(write_body=False)
 
-    def do_POST(self):
+    def _handle_post(self):
         parsed = urlparse(self.path)
         if self.headers.get('X-XSTRM-Requested-With') != 'xstrm-admin':
             return self._json(403, {'ok': False, 'error': 'missing request verification header'})
@@ -359,9 +360,22 @@ class Handler(BaseHTTPRequestHandler):
                 },
                 'profile': profile if ok else None,
                 'profile_error': None if ok else profile,
-            }, write_body=write_body)
+            })
 
-        return self._json(404, {'ok': False, 'error': 'not found'}, write_body=write_body)
+        return self._json(404, {'ok': False, 'error': 'not found'})
+
+    def do_POST(self):
+        try:
+            return self._handle_post()
+        except PermissionError:
+            traceback.print_exc()
+            return self._json(500, {
+                'ok': False,
+                'error': '保存配置失败：服务账户没有配置目录写权限，请重新运行安装或升级脚本修复权限',
+            })
+        except Exception:
+            traceback.print_exc()
+            return self._json(500, {'ok': False, 'error': '服务器处理请求失败，请检查 xstrm-admin-api 日志'})
 
 
 if __name__ == '__main__':

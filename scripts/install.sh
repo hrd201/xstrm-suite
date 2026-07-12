@@ -36,6 +36,7 @@ ensure_service_user() {
     output_root=$(python3 -c 'import yaml,sys; print((yaml.safe_load(open(sys.argv[1])) or {}).get("output_root", "/emby-strm"))' "$INSTALL_ROOT/config/strm-sync.yaml" 2>/dev/null || echo /emby-strm)
     mkdir -p "$INSTALL_ROOT/data" "$output_root"
     chown -R xstrm:xstrm "$INSTALL_ROOT/data" "$output_root"
+    chown xstrm:xstrm "$INSTALL_ROOT/config"
     chown xstrm:xstrm "$INSTALL_ROOT/config"/*.yaml "$INSTALL_ROOT/config"/*.json 2>/dev/null || true
 }
 

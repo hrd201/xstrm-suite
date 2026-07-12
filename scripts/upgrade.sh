@@ -40,6 +40,10 @@ if [ -f "$INSTALL_ROOT/services/xstrm-admin-api.service" ]; then
   sed -i 's#/opt/xstrm-suite#'$INSTALL_ROOT'#g' /etc/systemd/system/xstrm-admin-api.service
 fi
 chmod 600 "$INSTALL_ROOT/config/runtime.yaml" "$INSTALL_ROOT/config/strm-sync.yaml" "$INSTALL_ROOT/config/incremental-strm.json" 2>/dev/null || true
+if id xstrm >/dev/null 2>&1; then
+  chown xstrm:xstrm "$INSTALL_ROOT/config"
+  chown xstrm:xstrm "$INSTALL_ROOT/config/runtime.yaml" "$INSTALL_ROOT/config/strm-sync.yaml" "$INSTALL_ROOT/config/incremental-strm.json" 2>/dev/null || true
+fi
 systemctl daemon-reload 2>/dev/null || true
 systemctl restart xstrm-admin-api.service 2>/dev/null || true
 echo "[done] xstrm-suite upgraded/synced; config backup: $backup_file"
