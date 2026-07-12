@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -56,6 +57,20 @@ class IncrementalRefreshTests(unittest.TestCase):
     def tearDown(self):
         self.state.conn.close()
         self.temp.cleanup()
+
+    def test_alist_client_refreshes_only_requested_directory(self):
+        response = mock.MagicMock()
+        response.read.return_value = json.dumps({"code": 200, "data": {"content": []}}).encode()
+        response.__enter__.return_value = response
+        client = MODULE.AlistClient("http://alist.invalid/", "test-token")
+
+        with mock.patch.object(MODULE, "urlopen", return_value=response) as urlopen:
+            client.list_dir("/mnt/series/Show")
+
+        request = urlopen.call_args.args[0]
+        payload = json.loads(request.data)
+        self.assertEqual(payload["path"], "/mnt/series/Show")
+        self.assertIs(payload["refresh"], True)
 
     def test_manual_parent_refresh_reaches_existing_season(self):
         season = {"name": "Season 2", "is_dir": True, "modified": "2026-01-01"}

@@ -100,7 +100,7 @@ def load_nginx_profile(profile_root: str | None = None) -> tuple[bool, dict | st
         return False, '解析结果不是有效 JSON'
 
 
-def alist_list_dir(path: str) -> tuple[bool, dict | str]:
+def alist_list_dir(path: str, refresh: bool = False) -> tuple[bool, dict | str]:
     cfg = load_sync_config()
     alist = cfg.get('alist', {}) or {}
     base_url = (alist.get('base_url') or '').rstrip('/')
@@ -120,7 +120,7 @@ def alist_list_dir(path: str) -> tuple[bool, dict | str]:
         'password': '',
         'page': 1,
         'per_page': 0,
-        'refresh': False,
+        'refresh': bool(refresh),
     }, ensure_ascii=False).encode('utf-8')
     try:
         with urlrequest.urlopen(req, data=body, timeout=30) as resp:
@@ -241,9 +241,10 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == '/api/admin/xstrm/alist/list':
             query = parse_qs(parsed.query)
             path = (query.get('path') or ['/'])[0]
-            ok, payload = alist_list_dir(path)
+            refresh = (query.get('refresh') or ['0'])[0].lower() in ('1', 'true', 'yes', 'on')
+            ok, payload = alist_list_dir(path, refresh=refresh)
             if ok:
-                return self._json(200, {'ok': True, **payload}, write_body=write_body)
+                return self._json(200, {'ok': True, 'refreshed': refresh, **payload}, write_body=write_body)
             return self._json(500, {'ok': False, 'error': payload, 'path': path}, write_body=write_body)
         if parsed.path == '/api/admin/xstrm/settings':
             cfg = load_sync_config()

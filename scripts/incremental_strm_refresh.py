@@ -180,14 +180,17 @@ class AlistClient:
         self.base_url = base_url
         self.token = token
 
-    def list_dir(self, path: str) -> list[dict[str, Any]]:
+    def list_dir(self, path: str, refresh: bool = True) -> list[dict[str, Any]]:
         payload = json.dumps(
             {
                 "path": normalize_remote_path(path),
                 "password": "",
                 "page": 1,
                 "per_page": 0,
-                "refresh": False,
+                # Candidate directories are already rate-limited and budgeted.
+                # Refreshing only these directories avoids stale AList listings
+                # without recursively refreshing the whole drive.
+                "refresh": bool(refresh),
             }
         ).encode("utf-8")
         headers = {"Content-Type": "application/json"}

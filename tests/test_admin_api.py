@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,6 +13,20 @@ SPEC.loader.exec_module(MODULE)
 
 
 class AdminApiTests(unittest.TestCase):
+    def test_alist_force_refresh_is_sent_only_when_requested(self):
+        response = mock.MagicMock()
+        response.read.return_value = json.dumps({"code": 200, "data": {"content": []}}).encode()
+        response.__enter__.return_value = response
+
+        with mock.patch.object(MODULE, "load_sync_config", return_value={
+            "alist": {"base_url": "http://alist.invalid", "token": "test-token"},
+        }), mock.patch.object(MODULE.urlrequest, "urlopen", return_value=response) as urlopen:
+            ok, _ = MODULE.alist_list_dir("/media", refresh=True)
+
+        self.assertTrue(ok)
+        request_body = json.loads(urlopen.call_args.kwargs["data"])
+        self.assertIs(request_body["refresh"], True)
+
     def test_alist_items_sort_directories_first_by_creation_time(self):
         content = [
             {"name": "new-file.mkv", "is_dir": False, "created": "2026-07-12T12:00:00Z"},

@@ -13,12 +13,14 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - Redesigned the Web admin UI for clearer status scanning, safer task hierarchy, denser directory and source controls, and responsive desktop/mobile use.
 - AList browsing now keeps directories above files and sorts each group by creation/addition time, falling back to modification time when necessary.
+- Added an explicit current-directory cloud refresh action; normal navigation remains cache-friendly to avoid unnecessary drive requests.
 
 ### Security
 - Removed tracked runtime credentials, generated runtime files, deployment hostnames, and backup artifacts; added safe example configs and CI secret checks.
 - Added POST request verification, atomic configuration writes, restrictive runtime permissions, service hardening, and upgrade backups.
 
 ### Fixed
+- Incremental candidate-directory scans now refresh the selected AList directory instead of accepting a stale cached listing; the existing per-run directory budget and request pacing remain in effect.
 - Web configuration saves no longer fail with a 502 response when the hardened admin service cannot create its atomic temporary file; install and upgrade paths now preserve writable config-directory ownership and API failures remain JSON.
 - Regular polling no longer recursively requeues every known child directory.
 - New and restored STRM files are reported separately, and partial directory failures return a non-zero exit status.
