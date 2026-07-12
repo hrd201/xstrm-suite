@@ -365,6 +365,25 @@ class State:
         self.conn.commit()
         return rows
 
+    def pop_dirs_under(self, root_path: str, limit: int) -> list[sqlite3.Row]:
+        root = normalize_remote_path(root_path)
+        prefix = root.rstrip('/') + '/'
+        rows = self.conn.execute(
+            """
+            select remote_path, reason, attempts, recursive
+            from dir_queue
+            where not_before <= ?
+              and (remote_path = ? or substr(remote_path, 1, length(?)) = ?)
+            order by priority asc, updated_at asc
+            limit ?
+            """,
+            (utc_now(), root, prefix, prefix, limit),
+        ).fetchall()
+        paths = [row["remote_path"] for row in rows]
+        self.conn.executemany("delete from dir_queue where remote_path = ?", [(p,) for p in paths])
+        self.conn.commit()
+        return rows
+
     def mark_dir_failed(
         self,
         path: str,
@@ -707,20 +726,24 @@ def refresh_one_dir(
     return stats
 
 
-def run_once(config: Config) -> dict[str, int]:
+def run_once(config: Config, target_root: str | None = None) -> dict[str, int]:
     state = State(config.state_db)
     client = AlistClient(config.alist_base_url, config.alist_token)
-    seed_watch_dirs(state, config)
+    target_root = normalize_remote_path(target_root) if target_root else None
+    if target_root:
+        state.queue_dir(target_root, "web_manual", priority=1, recursive=True, revive_dead=True)
+    else:
+        seed_watch_dirs(state, config)
 
-    for path in state.active_dirs_due(
-        config.active_dir_ttl_days,
-        config.recheck_active_after_hours,
-        max(1, config.max_dirs_per_run // 2),
-    ):
-        state.queue_dir(path, "recent_active_dir", priority=45)
+        for path in state.active_dirs_due(
+            config.active_dir_ttl_days,
+            config.recheck_active_after_hours,
+            max(1, config.max_dirs_per_run // 2),
+        ):
+            state.queue_dir(path, "recent_active_dir", priority=45)
 
-    for path in state.cold_dirs_due(config.cold_dir_recheck_days, config.cold_dirs_per_run):
-        state.queue_dir(path, "cold_integrity_check", priority=120)
+        for path in state.cold_dirs_due(config.cold_dir_recheck_days, config.cold_dirs_per_run):
+            state.queue_dir(path, "cold_integrity_check", priority=120)
 
     run_id = state.start_run()
     stats = {
@@ -733,16 +756,26 @@ def run_once(config: Config) -> dict[str, int]:
     }
     try:
         while stats["dirs_scanned"] < config.max_dirs_per_run:
-            queued = state.pop_dirs(1)
+            queued = state.pop_dirs_under(target_root, 1) if target_root else state.pop_dirs(1)
             if not queued:
                 break
             item = queued[0]
             path = item["remote_path"]
             stats["dirs_scanned"] += 1
+            print(
+                f'[{stats["dirs_scanned"]}/{config.max_dirs_per_run}] 正在刷新 {path}',
+                flush=True,
+            )
             try:
                 result = refresh_one_dir(client, state, config, path, recursive=bool(item["recursive"]))
                 for key in ("new_files", "restored_files", "new_dirs", "remote_missing"):
                     stats[key] += result[key]
+                print(
+                    f'[{stats["dirs_scanned"]}/{config.max_dirs_per_run}] 完成 {path}: '
+                    f'新增 {result["new_files"]}, 补回 {result["restored_files"]}, '
+                    f'子目录 {result["new_dirs"]}',
+                    flush=True,
+                )
                 sleep_for = config.request_interval_seconds + random.uniform(0, config.jitter_seconds)
                 if sleep_for > 0:
                     time.sleep(sleep_for)
@@ -839,6 +872,9 @@ def main() -> int:
 
     sub.add_parser("run-once", help="Run one incremental refresh cycle.")
 
+    run_path_parser = sub.add_parser("run-path", help="Refresh only one directory tree.")
+    run_path_parser.add_argument("remote_path")
+
     queue_parser = sub.add_parser("queue-dir", help="Add a directory to the high-priority refresh queue.")
     queue_parser.add_argument("remote_path")
     queue_parser.add_argument("--reason", default="manual")
@@ -875,7 +911,7 @@ def main() -> int:
         daemon(config, args.interval_minutes, args.schedule)
         return 0
 
-    stats = run_once(config)
+    stats = run_once(config, target_root=args.remote_path if args.command == "run-path" else None)
     print(json.dumps(stats, ensure_ascii=False, indent=2))
     return 2 if stats["errors"] else 0
 

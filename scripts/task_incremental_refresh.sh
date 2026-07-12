@@ -28,18 +28,13 @@ fi
 
 if [[ -n "$TARGET_PATH" ]]; then
   status_write "$TASK_NAME" true null "正在刷新指定目录: $TARGET_PATH" "$LOG_FILE" "$STARTED_AT" ""
-  if ! python3 "$BASE_DIR/scripts/incremental_strm_refresh.py" --config "$CONFIG_FILE" \
-    queue-dir "$TARGET_PATH" --reason web_manual >>"$LOG_FILE" 2>&1; then
-    summary="指定目录加入队列失败"
-    status_write "$TASK_NAME" false false "$summary" "$LOG_FILE" "$STARTED_AT" "$(now_iso)"
-    emit_result "TASK_ERROR" "$TASK_NAME" "$LOG_FILE" "$summary"
-    exit 1
-  fi
+  RUN_COMMAND=(run-path "$TARGET_PATH")
 else
   status_write "$TASK_NAME" true null "正在执行增量刷新" "$LOG_FILE" "$STARTED_AT" ""
+  RUN_COMMAND=(run-once)
 fi
 
-if python3 "$BASE_DIR/scripts/incremental_strm_refresh.py" --config "$CONFIG_FILE" run-once >>"$LOG_FILE" 2>&1; then
+if python3 "$BASE_DIR/scripts/incremental_strm_refresh.py" --config "$CONFIG_FILE" "${RUN_COMMAND[@]}" >>"$LOG_FILE" 2>&1; then
   summary="$(tail -n 20 "$LOG_FILE" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g')"
   FINISHED_AT="$(now_iso)"
   status_write "$TASK_NAME" false true "$summary" "$LOG_FILE" "$STARTED_AT" "$FINISHED_AT"

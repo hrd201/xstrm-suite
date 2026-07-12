@@ -72,6 +72,23 @@ class IncrementalRefreshTests(unittest.TestCase):
         self.assertEqual(payload["path"], "/mnt/series/Show")
         self.assertIs(payload["refresh"], True)
 
+    def test_targeted_run_does_not_consume_unrelated_queue(self):
+        self.state.queue_dir("/mnt/series/Other", "scheduled", priority=10)
+        client = FakeClient({
+            "/mnt/series/Show": [{"name": "Movie.mkv", "is_dir": False, "size": 10}],
+        })
+
+        with mock.patch.object(MODULE, "AlistClient", return_value=client), mock.patch.object(
+            MODULE.time, "sleep"
+        ):
+            stats = MODULE.run_once(self.config, target_root="/mnt/series/Show")
+
+        self.assertEqual(stats["dirs_scanned"], 1)
+        self.assertEqual(stats["new_files"], 1)
+        self.assertTrue((self.config.strm_output_dir / "series/Show/Movie.strm").exists())
+        remaining = self.state.pop_dirs(10)
+        self.assertEqual([row["remote_path"] for row in remaining], ["/mnt/series/Other"])
+
     def test_manual_parent_refresh_reaches_existing_season(self):
         season = {"name": "Season 2", "is_dir": True, "modified": "2026-01-01"}
         self.state.upsert_entry("/mnt/series/Show/Season 2", "Season 2", True, None, "2026-01-01", None)
