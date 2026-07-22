@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - AList browsing now keeps directories above files and sorts each group by creation/addition time, falling back to modification time when necessary.
 - Added an explicit current-directory cloud refresh action; normal navigation remains cache-friendly to avoid unnecessary drive requests.
 - Targeted Web scans now process only the selected directory tree and emit per-directory progress instead of being delayed by the general refresh queue.
+- Entering an AList directory now refreshes that directory level, and completed scan tasks show an automatic success/failure toast and refresh the currently browsed directory.
 
 ### Security
 - Removed tracked runtime credentials, generated runtime files, deployment hostnames, and backup artifacts; added safe example configs and CI secret checks.

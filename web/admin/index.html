@@ -290,17 +290,21 @@
     let sourcesData = [];
 
     let refreshTimer = null;
+    let taskPollTimer = null;
+    let observedTaskState = null;
+    let pendingTask = null;
+    let currentBrowsePath = '/';
     const PATH_HISTORY_KEY = 'xstrm.admin.pathHistory';
 
     function escapeHtml(s) {
       return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
 
-    function showToast(message, type='ok') {
+    function showToast(message, type='ok', duration=6200) {
       toastEl.className = `toast show ${type}`;
       toastEl.textContent = message;
       clearTimeout(showToast._timer);
-      showToast._timer = setTimeout(() => toastEl.className = 'toast', 4200);
+      showToast._timer = setTimeout(() => toastEl.className = 'toast', duration);
     }
 
     function setButtonsDisabled(disabled) {
@@ -347,7 +351,50 @@
         fetchJson('/api/admin/xstrm/incremental/status').catch(() => ({incremental:{}}))
       ]);
       renderStatus(data, incrementalData.incremental || {});
+      handleTaskStatus(data?.status || {});
       return data;
+    }
+
+    function handleTaskStatus(status) {
+      const running = Boolean(status.running);
+      if (pendingTask && running) pendingTask.seenRunning = true;
+
+      const finishedAt = status.finished_at ? Date.parse(status.finished_at) : 0;
+      const pendingFinished = pendingTask && !running && (
+        pendingTask.seenRunning || (finishedAt && finishedAt >= pendingTask.submittedAt - 5000)
+      );
+      const observedFinished = observedTaskState?.running && !running;
+
+      if (pendingFinished || observedFinished) {
+        const completedTask = pendingTask;
+        const label = completedTask?.label || status.task || '扫描任务';
+        const succeeded = status.success !== false;
+        showToast(`${label}${succeeded ? '已完成' : '执行失败'}`, succeeded ? 'ok' : 'bad', 12000);
+        loadLogs().catch(() => {});
+        if (succeeded && currentBrowsePath && currentBrowsePath !== '/') {
+          browseAlist(currentBrowsePath, true).catch(() => {});
+        }
+        pendingTask = null;
+        clearTimeout(taskPollTimer);
+      } else if (pendingTask && !running && !pendingTask.seenRunning && Date.now() - pendingTask.submittedAt > 15000) {
+        showToast(`${pendingTask.label}未检测到启动状态，请查看最近日志`, 'bad', 8000);
+        pendingTask = null;
+        clearTimeout(taskPollTimer);
+      }
+      observedTaskState = {running, finishedAt: status.finished_at || ''};
+    }
+
+    function scheduleTaskPolling() {
+      clearTimeout(taskPollTimer);
+      const poll = async () => {
+        if (!pendingTask) return;
+        try {
+          await loadStatus();
+          await loadLogs();
+        } catch {}
+        if (pendingTask) taskPollTimer = setTimeout(poll, 2000);
+      };
+      taskPollTimer = setTimeout(poll, 1200);
     }
 
     async function loadLogs() {
@@ -466,7 +513,7 @@
         const btn = document.createElement('button');
         btn.className = 'secondary';
         btn.textContent = idx === 0 ? '/' : p.split('/').pop();
-        btn.onclick = () => browseAlist(p).catch(e => showToast('浏览失败：' + e.message, 'bad'));
+        btn.onclick = () => browseAlist(p, true).catch(e => showToast('刷新目录失败：' + e.message, 'bad'));
         browseBreadcrumb.appendChild(btn);
       });
     }
@@ -489,7 +536,7 @@
         </div>
       `).join('');
       browseList.querySelectorAll('[data-browse-path]').forEach(btn => {
-        btn.onclick = () => browseAlist(btn.dataset.browsePath).catch(e => showToast('浏览失败：' + e.message, 'bad'));
+        btn.onclick = () => browseAlist(btn.dataset.browsePath, true).catch(e => showToast('刷新目录失败：' + e.message, 'bad'));
       });
       browseList.querySelectorAll('[data-use-path]').forEach(btn => {
         btn.onclick = () => { pathInput.value = btn.dataset.usePath; savePathHistory(btn.dataset.usePath); showToast('已填入扫描目录'); };
@@ -544,7 +591,7 @@
       sourcesData.push({scan_mode: 'alist', scan_path: '/mnt/115/', output_prefix: '/115/'});
       renderSources();
     };
-    browseRootBtn.onclick = () => browseAlist('/').catch(e => showToast('浏览失败：' + e.message, 'bad'));
+    browseRootBtn.onclick = () => browseAlist('/', true).catch(e => showToast('刷新目录失败：' + e.message, 'bad'));
     refreshBrowseBtn.onclick = async () => {
       refreshBrowseBtn.disabled = true;
       try {
@@ -556,7 +603,7 @@
         refreshBrowseBtn.disabled = false;
       }
     };
-    browsePathBtn.onclick = () => browseAlist((browsePathInput.value || '/').trim() || '/').catch(e => showToast('浏览失败：' + e.message, 'bad'));
+    browsePathBtn.onclick = () => browseAlist((browsePathInput.value || '/').trim() || '/', true).catch(e => showToast('刷新目录失败：' + e.message, 'bad'));
     useBrowsePathBtn.onclick = () => {
       pathInput.value = currentBrowsePath || '/';
       savePathHistory(pathInput.value);
@@ -606,7 +653,7 @@
       }, seconds * 1000);
     }
 
-    async function runAction(url, body=null, confirmText=null, successLabel='已提交') {
+    async function runAction(url, body=null, confirmText=null, successLabel='已提交', taskLabel=null) {
       if (confirmText && !window.confirm(confirmText)) return;
       setButtonsDisabled(true);
       try {
@@ -617,6 +664,10 @@
         });
         const text = (data.stdout || data.stderr || successLabel).trim();
         showToast(text || successLabel, 'ok');
+        if (taskLabel) {
+          pendingTask = {label: taskLabel, submittedAt: Date.now(), seenRunning: false};
+          scheduleTaskPolling();
+        }
         if (body?.path) savePathHistory(body.path);
       } catch (e) {
         showToast('执行失败：' + e.message, 'bad');
@@ -662,13 +713,13 @@
       }
     };
 
-    scanBtn.onclick = () => runAction('/api/admin/xstrm/scan', null, null, '已触发增量扫描');
-    scanFullBtn.onclick = () => runAction('/api/admin/xstrm/scan-full', null, null, '已触发完整校验');
-    rebuildBtn.onclick = () => runAction('/api/admin/xstrm/rebuild', null, '确认执行全量重建？这会删除旧 .strm 并重新生成。', '已触发全量重建');
+    scanBtn.onclick = () => runAction('/api/admin/xstrm/scan', null, null, '已触发增量扫描', '增量扫描');
+    scanFullBtn.onclick = () => runAction('/api/admin/xstrm/scan-full', null, null, '已触发完整校验', '完整校验');
+    rebuildBtn.onclick = () => runAction('/api/admin/xstrm/rebuild', null, '确认执行全量重建？这会删除旧 .strm 并重新生成。', '已触发全量重建', '全量重建');
     scanPathBtn.onclick = () => {
       const path = pathInput.value.trim();
       if (!path) return showToast('请先输入目录', 'bad');
-      runAction('/api/admin/xstrm/scan-path', {path}, null, '已触发指定目录扫描');
+      runAction('/api/admin/xstrm/scan-path', {path}, null, '已触发指定目录扫描', '指定目录扫描');
     };
     ignorePathBtn.onclick = () => {
       const path = pathInput.value.trim();
