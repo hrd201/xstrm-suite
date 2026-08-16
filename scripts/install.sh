@@ -281,6 +281,7 @@ incremental_refresh:
   state_db: /opt/xstrm-suite/data/incremental-strm.sqlite3
   schedule_times: ["02:30", "14:30"]
   max_dirs_per_run: 20
+  target_max_dirs_per_run: 50
   request_interval_seconds: 3
   jitter_seconds: 10
   active_dir_ttl_days: 21

@@ -24,6 +24,10 @@ class FakeClient:
     def list_dir(self, path):
         return self.listings[path]
 
+    def download_file(self, remote_path, target):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(f"subtitle:{remote_path}".encode())
+
 
 class IncrementalRefreshTests(unittest.TestCase):
     def setUp(self):
@@ -72,6 +76,50 @@ class IncrementalRefreshTests(unittest.TestCase):
         self.assertEqual(payload["path"], "/mnt/series/Show")
         self.assertIs(payload["refresh"], True)
 
+    def test_alist_client_retries_one_transient_timeout(self):
+        timeout_response = mock.MagicMock()
+        timeout_response.read.return_value = json.dumps({
+            "code": 500,
+            "message": "TLS handshake timeout",
+        }).encode()
+        timeout_response.__enter__.return_value = timeout_response
+        success_response = mock.MagicMock()
+        success_response.read.return_value = json.dumps({
+            "code": 200,
+            "data": {"content": [{"name": "episode.mkv"}]},
+        }).encode()
+        success_response.__enter__.return_value = success_response
+        client = MODULE.AlistClient("http://alist.invalid/", "test-token")
+
+        with mock.patch.object(MODULE, "urlopen", side_effect=[timeout_response, success_response]) as urlopen, mock.patch.object(
+            MODULE.time, "sleep"
+        ):
+            items = client.list_dir("/mnt/series/Show")
+
+        self.assertEqual(items, [{"name": "episode.mkv"}])
+        self.assertEqual(urlopen.call_count, 2)
+
+    def test_alist_client_downloads_subtitle_atomically(self):
+        info_response = mock.MagicMock()
+        info_response.read.return_value = json.dumps({
+            "code": 200,
+            "data": {"sign": "signed-value"},
+        }).encode()
+        info_response.__enter__.return_value = info_response
+        download_response = mock.MagicMock()
+        download_response.read.return_value = b"subtitle-content"
+        download_response.headers = {"Content-Type": "application/octet-stream"}
+        download_response.__enter__.return_value = download_response
+        client = MODULE.AlistClient("http://alist.invalid/", "test-token")
+        target = Path(self.temp.name) / "nested" / "episode.srt"
+
+        with mock.patch.object(MODULE, "urlopen", side_effect=[info_response, download_response]) as urlopen:
+            client.download_file("/mnt/series/Show/episode.srt", target)
+
+        self.assertEqual(target.read_bytes(), b"subtitle-content")
+        self.assertFalse(target.with_name("episode.srt.tmp").exists())
+        self.assertIn("/d/mnt/series/Show/episode.srt", urlopen.call_args_list[1].args[0].full_url)
+
     def test_targeted_run_does_not_consume_unrelated_queue(self):
         self.state.queue_dir("/mnt/series/Other", "scheduled", priority=10)
         client = FakeClient({
@@ -88,6 +136,57 @@ class IncrementalRefreshTests(unittest.TestCase):
         self.assertTrue((self.config.strm_output_dir / "series/Show/Movie.strm").exists())
         remaining = self.state.pop_dirs(10)
         self.assertEqual([row["remote_path"] for row in remaining], ["/mnt/series/Other"])
+
+    def test_nested_new_show_generates_video_and_downloads_subtitle(self):
+        self.config.max_dirs_per_run = 3
+        client = FakeClient({
+            "/mnt/series": [{"name": "Show-S1", "is_dir": True, "modified": "2026-08-16"}],
+            "/mnt/series/Show-S1": [{"name": "Season 1", "is_dir": True, "modified": "2026-08-16"}],
+            "/mnt/series/Show-S1/Season 1": [
+                {"name": "S01E01.mkv", "is_dir": False, "size": 10},
+                {"name": "S01E01.zh-CN.srt", "is_dir": False, "size": 5},
+            ],
+        })
+
+        with mock.patch.object(MODULE, "AlistClient", return_value=client), mock.patch.object(
+            MODULE.time, "sleep"
+        ):
+            stats = MODULE.run_once(self.config, target_root="/mnt/series")
+
+        video = self.config.strm_output_dir / "series/Show-S1/Season 1/S01E01.strm"
+        subtitle = self.config.strm_output_dir / "series/Show-S1/Season 1/S01E01.zh-CN.srt"
+        self.assertTrue(video.exists())
+        self.assertTrue(subtitle.exists())
+        self.assertEqual(stats["dirs_scanned"], 3)
+        self.assertEqual(stats["new_files"], 1)
+        self.assertEqual(stats["subtitle_downloaded"], 1)
+
+    def test_unscanned_child_is_queued_without_recursive_existing_child(self):
+        old_path = "/mnt/series/Old"
+        self.state.upsert_entry(old_path, "Old", True, None, "2026-01-01", None)
+        self.state.mark_dir_scanned(old_path)
+        client = FakeClient({
+            "/mnt/series": [
+                {"name": "Old", "is_dir": True, "modified": "2026-01-01"},
+                {"name": "New", "is_dir": True, "modified": "2026-08-16"},
+            ],
+        })
+
+        MODULE.refresh_one_dir(client, self.state, self.config, "/mnt/series", recursive=True)
+        queued = self.state.pop_dirs(2)
+
+        self.assertEqual([row["remote_path"] for row in queued], ["/mnt/series/New"])
+
+    def test_scanning_directory_preserves_parent_metadata(self):
+        path = "/mnt/series/Show"
+        self.state.upsert_entry(path, "Show", True, 0, "2026-08-16", "dir-sign")
+        client = FakeClient({path: []})
+
+        MODULE.refresh_one_dir(client, self.state, self.config, path)
+        row = self.state.get_entry(path)
+
+        self.assertEqual(row["modified"], "2026-08-16")
+        self.assertEqual(row["sign"], "dir-sign")
 
     def test_manual_parent_refresh_reaches_existing_season(self):
         season = {"name": "Season 2", "is_dir": True, "modified": "2026-01-01"}
@@ -107,6 +206,7 @@ class IncrementalRefreshTests(unittest.TestCase):
 
     def test_unchanged_child_is_not_requeued_by_regular_poll(self):
         self.state.upsert_entry("/mnt/series/Show/Season 2", "Season 2", True, None, "2026-01-01", None)
+        self.state.mark_dir_scanned("/mnt/series/Show/Season 2")
         client = FakeClient({
             "/mnt/series/Show": [{"name": "Season 2", "is_dir": True, "modified": "2026-01-01"}],
         })

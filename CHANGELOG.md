@@ -22,6 +22,9 @@ All notable changes to this project will be documented in this file.
 - Added POST request verification, atomic configuration writes, restrictive runtime permissions, service hardening, and upgrade backups.
 
 ### Fixed
+- Parent-directory incremental scans now prioritize new, changed, and never-scanned nested directories, preserve directory metadata between scans, and download missing subtitle files alongside new STRM files.
+- Explicit parent-directory scans use a separate 50-directory budget and skip unchanged recursive children, allowing larger newly added season trees to complete without turning into a full-library scan.
+- Transient AList timeout and TLS handshake failures receive one delayed retry before normal queue retry handling.
 - Incremental candidate-directory scans now refresh the selected AList directory instead of accepting a stale cached listing; the existing per-run directory budget and request pacing remain in effect.
 - Web configuration saves no longer fail with a 502 response when the hardened admin service cannot create its atomic temporary file; install and upgrade paths now preserve writable config-directory ownership and API failures remain JSON.
 - Regular polling no longer recursively requeues every known child directory.

@@ -16,7 +16,7 @@ import shutil
 import sqlite3
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -42,6 +42,18 @@ VIDEO_EXTENSIONS = {
     ".ts",
     ".webm",
     ".wmv",
+}
+
+SUBTITLE_EXTENSIONS = {
+    ".ass",
+    ".idx",
+    ".pgs",
+    ".smi",
+    ".srt",
+    ".ssa",
+    ".sub",
+    ".sup",
+    ".vtt",
 }
 
 
@@ -113,6 +125,9 @@ class Config:
     schedule_times: list[str]
     include_extensions: set[str]
     exclude_name_contains: list[str]
+    subtitle_sync: bool = True
+    subtitle_extensions: set[str] = field(default_factory=lambda: set(SUBTITLE_EXTENSIONS))
+    target_max_dirs_per_run: int = 50
 
     @classmethod
     def load(cls, path: Path) -> "Config":
@@ -128,6 +143,7 @@ class Config:
         alist = raw.get("alist", {}) or {}
         scan = raw.get("scan", {}) or {}
         extensions = raw.get("include_extensions") or scan.get("include_ext") or sorted(VIDEO_EXTENSIONS)
+        subtitle_extensions = scan.get("subtitle_exts") or sorted(SUBTITLE_EXTENSIONS)
         sources = []
         for source in raw.get("sources", []):
             scan_path = source.get("scan_path") or source.get("path")
@@ -161,6 +177,9 @@ class Config:
             schedule_times=list(inc.get("schedule_times", [])),
             include_extensions={ext.lower() for ext in extensions},
             exclude_name_contains=[s.lower() for s in (raw.get("exclude_name_contains") or inc.get("exclude_name_contains", []))],
+            subtitle_sync=bool(scan.get("subtitle_sync", True)),
+            subtitle_extensions={str(ext).lower() if str(ext).startswith(".") else f".{str(ext).lower()}" for ext in subtitle_extensions},
+            target_max_dirs_per_run=int(inc.get("target_max_dirs_per_run", 50)),
         )
         if not config.alist_base_url.strip("/"):
             raise ValueError("AList base URL is required")
@@ -168,6 +187,8 @@ class Config:
             raise ValueError("at least one source mapping is required")
         if config.max_dirs_per_run < 1:
             raise ValueError("max_dirs_per_run must be at least 1")
+        if config.target_max_dirs_per_run < 1:
+            raise ValueError("target_max_dirs_per_run must be at least 1")
         if config.remote_delete_policy not in {"keep", "quarantine", "delete"}:
             raise ValueError("remote_delete_policy must be keep, quarantine, or delete")
         if config.max_retry_attempts < 1:
@@ -203,20 +224,80 @@ class AlistClient:
             method="POST",
         )
 
-        try:
-            with urlopen(request, timeout=60) as response:
-                body = response.read().decode("utf-8")
-        except HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"Alist HTTP {exc.code}: {detail}") from exc
-        except URLError as exc:
-            raise RuntimeError(f"Alist request failed: {exc.reason}") from exc
+        last_error: Exception | None = None
+        for attempt in range(2):
+            try:
+                with urlopen(request, timeout=60) as response:
+                    body = response.read().decode("utf-8")
+                parsed = json.loads(body)
+                if parsed.get("code") in (200, "200"):
+                    return parsed.get("data", {}).get("content") or []
+                message = str(parsed.get("message") or parsed.get("msg") or parsed)
+                error = RuntimeError(f"Alist API error: {message}")
+                if not self._is_transient_error(message):
+                    raise error
+                last_error = error
+            except HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="replace")
+                error = RuntimeError(f"Alist HTTP {exc.code}: {detail}")
+                if exc.code < 500 or not self._is_transient_error(detail):
+                    raise error from exc
+                last_error = error
+            except (URLError, TimeoutError, OSError) as exc:
+                last_error = RuntimeError(f"Alist request failed: {exc}")
 
-        parsed = json.loads(body)
-        if parsed.get("code") not in (200, "200"):
-            raise RuntimeError(f"Alist API error: {parsed}")
-        content = parsed.get("data", {}).get("content") or []
-        return content
+            if attempt == 0:
+                delay = 5 + random.uniform(0, 3)
+                print(f"[WARN] AList 临时连接异常，{delay:.1f} 秒后重试: {path}", file=sys.stderr, flush=True)
+                time.sleep(delay)
+
+        raise last_error or RuntimeError("Alist request failed")
+
+    @staticmethod
+    def _is_transient_error(message: str) -> bool:
+        lowered = message.lower()
+        return any(token in lowered for token in (
+            "timeout", "timed out", "handshake", "connection reset",
+            "connection refused", "temporary", "unexpected eof", "try again",
+        ))
+
+    def download_file(self, remote_path: str, target: Path) -> None:
+        info_payload = json.dumps({
+            "path": normalize_remote_path(remote_path),
+            "password": "",
+        }).encode("utf-8")
+        info_request = Request(
+            urljoin(self.base_url, "api/fs/get"),
+            data=info_payload,
+            headers={"Content-Type": "application/json", "Authorization": self.token},
+            method="POST",
+        )
+        with urlopen(info_request, timeout=60) as response:
+            info = json.loads(response.read().decode("utf-8"))
+        if info.get("code") not in (200, "200"):
+            raise RuntimeError(f"Alist file info error: {info.get('message') or info.get('msg') or info.get('code')}")
+
+        sign = ((info.get("data") or {}).get("sign") or "").strip()
+        encoded_path = "/".join(quote(part) for part in normalize_remote_path(remote_path).split("/"))
+        download_url = urljoin(self.base_url, "d" + encoded_path)
+        params = []
+        if sign:
+            params.append("sign=" + quote(sign, safe=""))
+        if self.token:
+            params.append("token=" + quote(self.token, safe=""))
+        if params:
+            download_url += "?" + "&".join(params)
+        download_request = Request(download_url, headers={"Authorization": self.token})
+        with urlopen(download_request, timeout=120) as response:
+            content_type = response.headers.get("Content-Type", "")
+            content = response.read()
+        if "application/json" in content_type:
+            raise RuntimeError("Alist returned JSON instead of subtitle content")
+
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_name(target.name + ".tmp")
+        temporary.write_bytes(content)
+        temporary.replace(target)
 
 
 class State:
@@ -285,6 +366,8 @@ class State:
         self._add_column("dir_queue", "recursive", "integer not null default 0")
         self._add_column("runs", "restored_files", "integer not null default 0")
         self._add_column("runs", "remote_missing", "integer not null default 0")
+        self._add_column("runs", "subtitle_downloaded", "integer not null default 0")
+        self._add_column("runs", "subtitle_failed", "integer not null default 0")
         self.conn.commit()
 
     def _add_column(self, table: str, column: str, declaration: str) -> None:
@@ -302,7 +385,7 @@ class State:
             """
             update runs
             set finished_at = ?, dirs_scanned = ?, new_files = ?, new_dirs = ?, errors = ?,
-                restored_files = ?, remote_missing = ?
+                restored_files = ?, remote_missing = ?, subtitle_downloaded = ?, subtitle_failed = ?
             where id = ?
             """,
             (
@@ -313,6 +396,8 @@ class State:
                 stats["errors"],
                 stats["restored_files"],
                 stats["remote_missing"],
+                stats["subtitle_downloaded"],
+                stats["subtitle_failed"],
                 run_id,
             ),
         )
@@ -450,9 +535,9 @@ class State:
                 parent_path = excluded.parent_path,
                 name = excluded.name,
                 is_dir = excluded.is_dir,
-                size = excluded.size,
-                modified = excluded.modified,
-                sign = excluded.sign,
+                size = coalesce(excluded.size, entries.size),
+                modified = coalesce(excluded.modified, entries.modified),
+                sign = coalesce(excluded.sign, entries.sign),
                 strm_path = coalesce(excluded.strm_path, entries.strm_path),
                 strm_created = max(entries.strm_created, excluded.strm_created),
                 missing_remote_since = null,
@@ -610,6 +695,14 @@ def write_strm(remote_path: str, config: Config) -> Path:
     return target
 
 
+def subtitle_target(remote_path: str, config: Config) -> Path:
+    return config.strm_output_dir / safe_rel_path(map_remote_to_media_path(remote_path, config))
+
+
+def should_sync_subtitle(name: str, config: Config) -> bool:
+    return config.subtitle_sync and Path(name).suffix.lower() in config.subtitle_extensions
+
+
 def needs_strm(existing: sqlite3.Row | None, is_new: bool) -> bool:
     if is_new or existing is None:
         return True
@@ -663,7 +756,15 @@ def apply_remote_delete_policy(row: sqlite3.Row, config: Config) -> None:
 def refresh_one_dir(
     client: AlistClient, state: State, config: Config, path: str, recursive: bool = False
 ) -> dict[str, int]:
-    stats = {"new_files": 0, "restored_files": 0, "new_dirs": 0, "remote_missing": 0}
+    stats = {
+        "new_files": 0,
+        "restored_files": 0,
+        "new_dirs": 0,
+        "remote_missing": 0,
+        "subtitle_downloaded": 0,
+        "subtitle_skipped": 0,
+        "subtitle_failed": 0,
+    }
     items = client.list_dir(path)
     state.upsert_entry(path, Path(path).name or "/", True, None, None, None)
     seen_paths: set[str] = set()
@@ -686,11 +787,16 @@ def refresh_one_dir(
         if is_dir:
             if is_new:
                 stats["new_dirs"] += 1
-            if recursive or is_new or changed:
+            never_scanned = previous is None or previous["last_scanned_at"] is None
+            if is_new or changed or never_scanned:
+                if is_new or never_scanned:
+                    priority, reason = 5, "new_unscanned_child"
+                elif changed:
+                    priority, reason = 15, "changed_child"
                 state.queue_dir(
                     child_path,
-                    "recursive_child" if recursive else "changed_child",
-                    priority=55 if recursive else 65,
+                    reason,
+                    priority=priority,
                     recursive=recursive or is_new,
                 )
             continue
@@ -714,6 +820,18 @@ def refresh_one_dir(
                 stats["new_files"] += 1
             else:
                 stats["restored_files"] += 1
+        elif should_sync_subtitle(name, config):
+            target = subtitle_target(child_path, config)
+            if target.exists():
+                stats["subtitle_skipped"] += 1
+            else:
+                try:
+                    client.download_file(child_path, target)
+                    stats["subtitle_downloaded"] += 1
+                    time.sleep(random.uniform(0.5, 1.5))
+                except Exception as exc:  # Keep scanning sibling media files.
+                    stats["subtitle_failed"] += 1
+                    print(f"[WARN] 字幕下载失败 {child_path}: {exc}", file=sys.stderr, flush=True)
 
     state.mark_dir_scanned(path)
     missing_rows = state.mark_remote_missing(path, seen_paths)
@@ -752,10 +870,14 @@ def run_once(config: Config, target_root: str | None = None) -> dict[str, int]:
         "restored_files": 0,
         "new_dirs": 0,
         "remote_missing": 0,
+        "subtitle_downloaded": 0,
+        "subtitle_skipped": 0,
+        "subtitle_failed": 0,
         "errors": 0,
     }
+    directory_budget = config.target_max_dirs_per_run if target_root else config.max_dirs_per_run
     try:
-        while stats["dirs_scanned"] < config.max_dirs_per_run:
+        while stats["dirs_scanned"] < directory_budget:
             queued = state.pop_dirs_under(target_root, 1) if target_root else state.pop_dirs(1)
             if not queued:
                 break
@@ -763,17 +885,21 @@ def run_once(config: Config, target_root: str | None = None) -> dict[str, int]:
             path = item["remote_path"]
             stats["dirs_scanned"] += 1
             print(
-                f'[{stats["dirs_scanned"]}/{config.max_dirs_per_run}] 正在刷新 {path}',
+                f'[{stats["dirs_scanned"]}/{directory_budget}] 正在刷新 {path}',
                 flush=True,
             )
             try:
                 result = refresh_one_dir(client, state, config, path, recursive=bool(item["recursive"]))
-                for key in ("new_files", "restored_files", "new_dirs", "remote_missing"):
+                for key in (
+                    "new_files", "restored_files", "new_dirs", "remote_missing",
+                    "subtitle_downloaded", "subtitle_skipped", "subtitle_failed",
+                ):
                     stats[key] += result[key]
                 print(
-                    f'[{stats["dirs_scanned"]}/{config.max_dirs_per_run}] 完成 {path}: '
+                    f'[{stats["dirs_scanned"]}/{directory_budget}] 完成 {path}: '
                     f'新增 {result["new_files"]}, 补回 {result["restored_files"]}, '
-                    f'子目录 {result["new_dirs"]}',
+                    f'子目录 {result["new_dirs"]}, 字幕下载 {result["subtitle_downloaded"]}, '
+                    f'字幕失败 {result["subtitle_failed"]}',
                     flush=True,
                 )
                 sleep_for = config.request_interval_seconds + random.uniform(0, config.jitter_seconds)

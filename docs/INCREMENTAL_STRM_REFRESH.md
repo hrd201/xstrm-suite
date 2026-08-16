@@ -166,7 +166,11 @@ systemctl enable --now xstrm-incremental-refresh.timer
 ## Operational Notes
 
 - Keep `max_dirs_per_run` conservative because child directories discovered during a run can now consume the same run budget.
+- New, changed, and never-scanned child directories are prioritized, so a parent scan reaches newly added nested seasons within the same budget.
+- Scheduled runs use `max_dirs_per_run` (default 20). Explicit `run-path`/Web scans use `target_max_dirs_per_run` (default 50) and do not enqueue unchanged child directories.
+- Incremental scans also download missing subtitle files when `scan.subtitle_sync` is enabled (the default).
 - Use request intervals and jitter to avoid bursty AList access.
+- A transient timeout or TLS handshake failure gets one delayed retry; persistent failures remain queued for the configured retry window.
 - Queue newly pinned directories with `queue-dir`.
 - Do not use this as a replacement for full rebuilds. It is for daily small changes.
 
@@ -182,6 +186,12 @@ systemctl enable --now xstrm-incremental-refresh.timer
 - 希望限制 AList 请求量，降低网盘风控风险。
 
 核心机制：
+
+- 新增、发生变化以及从未实际扫描的子目录会优先于旧目录处理；
+- 扫描父级剧集目录时，新加入的剧集/季目录可在同一轮预算内继续向下扫描；
+- 定时任务默认最多处理 20 个目录；Web 指定扫描默认最多处理 50 个新增/变化目录，完全未变化的旧目录不会被递归入队；
+- `scan.subtitle_sync` 启用时（默认启用），增量扫描也会下载缺失字幕到对应的本地 STRM 目录。
+- AList/115 瞬时超时或 TLS 握手失败只会延迟重试一次；持续失败仍按配置进入延迟重试队列，避免无限请求。
 
 1. `entries` 表记录已见过的远程文件和对应 `.strm`。
 2. `dir_queue` 表记录待刷新的目录。
