@@ -43,6 +43,11 @@ chmod 600 "$INSTALL_ROOT/config/runtime.yaml" "$INSTALL_ROOT/config/strm-sync.ya
 if id xstrm >/dev/null 2>&1; then
   chown xstrm:xstrm "$INSTALL_ROOT/config"
   chown xstrm:xstrm "$INSTALL_ROOT/config/runtime.yaml" "$INSTALL_ROOT/config/strm-sync.yaml" "$INSTALL_ROOT/config/incremental-strm.json" 2>/dev/null || true
+  output_root=$(python3 -c 'import sys,yaml; print((yaml.safe_load(open(sys.argv[1])) or {}).get("output_root", "/emby-strm"))' "$INSTALL_ROOT/config/strm-sync.yaml" 2>/dev/null || echo /emby-strm)
+  if [ -n "$output_root" ] && [ "$output_root" != "/" ]; then
+    mkdir -p "$output_root"
+    find "$output_root" -xdev \( ! -user xstrm -o ! -group xstrm \) -exec chown xstrm:xstrm {} +
+  fi
 fi
 systemctl daemon-reload 2>/dev/null || true
 systemctl restart xstrm-admin-api.service 2>/dev/null || true

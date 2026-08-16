@@ -25,6 +25,7 @@ All notable changes to this project will be documented in this file.
 - Added POST request verification, atomic configuration writes, restrictive runtime permissions, service hardening, and upgrade backups.
 
 ### Fixed
+- Upgrade now repairs STRM output ownership, and task failures containing quotes or shell-sensitive text are safely persisted as completed error states.
 - Parent-directory incremental scans now prioritize new, changed, and never-scanned nested directories, preserve directory metadata between scans, and download missing subtitle files alongside new STRM files.
 - Explicit parent-directory scans use a separate 50-directory budget and skip unchanged recursive children, allowing larger newly added season trees to complete without turning into a full-library scan.
 - Transient AList timeout and TLS handshake failures receive one delayed retry before normal queue retry handling.

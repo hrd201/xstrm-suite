@@ -28,8 +28,9 @@ status_write() {
   local log_file="$5"
   local started_at="$6"
   local finished_at="$7"
-  python3 - <<PY
+  python3 - "$STATUS_FILE" "$task_name" "$running" "$success" "$message" "$log_file" "$started_at" "$finished_at" <<'PY'
 import json
+import sys
 from pathlib import Path
 
 def parse_value(v):
@@ -41,16 +42,16 @@ def parse_value(v):
         return None
     return v
 
-path = Path(${STATUS_FILE@Q})
+path = Path(sys.argv[1])
 path.parent.mkdir(parents=True, exist_ok=True)
 data = {
-  "task": ${task_name@Q},
-  "running": parse_value(${running@Q}),
-  "success": parse_value(${success@Q}),
-  "message": ${message@Q},
-  "log_file": ${log_file@Q},
-  "started_at": ${started_at@Q},
-  "finished_at": ${finished_at@Q},
+  "task": sys.argv[2],
+  "running": parse_value(sys.argv[3]),
+  "success": parse_value(sys.argv[4]),
+  "message": sys.argv[5],
+  "log_file": sys.argv[6],
+  "started_at": sys.argv[7],
+  "finished_at": sys.argv[8],
 }
 path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
 PY
