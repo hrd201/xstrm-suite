@@ -130,8 +130,11 @@
     <div class="card">
       <h2>任务操作</h2>
       <div class="actions" style="margin-bottom:12px;">
-        <button id="scanBtn">立即扫描新增</button>
-        <button id="scanFullBtn" class="secondary">完整校验</button>
+        <select id="scanModeSelect" style="width:auto; min-width:210px;">
+          <option value="new" selected>新增（最近 24 小时）</option>
+          <option value="all">全部文件</option>
+        </select>
+        <button id="scanBtn">开始扫描</button>
       </div>
 
       <div style="margin-top:8px; margin-bottom:10px;">
@@ -254,7 +257,7 @@
     const refreshBtn = document.getElementById('refreshBtn');
     const logBtn = document.getElementById('logBtn');
     const scanBtn = document.getElementById('scanBtn');
-    const scanFullBtn = document.getElementById('scanFullBtn');
+    const scanModeSelect = document.getElementById('scanModeSelect');
     const rebuildBtn = document.getElementById('rebuildBtn');
     const scanPathBtn = document.getElementById('scanPathBtn');
     const pathInput = document.getElementById('pathInput');
@@ -308,7 +311,7 @@
     }
 
     function setButtonsDisabled(disabled) {
-      [refreshBtn, logBtn, scanBtn, scanFullBtn, rebuildBtn, scanPathBtn, ignorePathBtn, unignorePathBtn, browseRootBtn, refreshBrowseBtn, useBrowsePathBtn, browsePathBtn, refreshSettingsBtn, saveSettingsBtn, changePasswordBtn, refreshSourcesBtn, saveSourcesBtn, addSourceBtn, strmHealthBtn].forEach(btn => btn && (btn.disabled = disabled));
+      [refreshBtn, logBtn, scanBtn, scanModeSelect, rebuildBtn, scanPathBtn, ignorePathBtn, unignorePathBtn, browseRootBtn, refreshBrowseBtn, useBrowsePathBtn, browsePathBtn, refreshSettingsBtn, saveSettingsBtn, changePasswordBtn, refreshSourcesBtn, saveSourcesBtn, addSourceBtn, strmHealthBtn].forEach(btn => btn && (btn.disabled = disabled));
     }
 
     function renderStatus(data, incremental={}) {
@@ -713,8 +716,11 @@
       }
     };
 
-    scanBtn.onclick = () => runAction('/api/admin/xstrm/scan', null, null, '已触发增量扫描', '增量扫描');
-    scanFullBtn.onclick = () => runAction('/api/admin/xstrm/scan-full', null, null, '已触发完整校验', '完整校验');
+    scanBtn.onclick = () => {
+      const mode = scanModeSelect.value;
+      const label = mode === 'new' ? '近 24 小时新增扫描' : '全部文件扫描';
+      runAction('/api/admin/xstrm/scan', {mode}, null, `已触发${label}`, label);
+    };
     rebuildBtn.onclick = () => runAction('/api/admin/xstrm/rebuild', null, '确认执行全量重建？这会删除旧 .strm 并重新生成。', '已触发全量重建', '全量重建');
     scanPathBtn.onclick = () => {
       const path = pathInput.value.trim();

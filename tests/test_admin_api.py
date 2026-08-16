@@ -13,6 +13,18 @@ SPEC.loader.exec_module(MODULE)
 
 
 class AdminApiTests(unittest.TestCase):
+    def test_scan_mode_selects_recent_or_full_task(self):
+        recent_task, recent_message = MODULE.scan_task_for_mode('new')
+        full_task, full_message = MODULE.scan_task_for_mode('all')
+
+        self.assertIn('task_scan_recent.sh', recent_task[1])
+        self.assertEqual(recent_task[-1], '24')
+        self.assertIn('24 小时', recent_message)
+        self.assertIn('task_scan_incremental.sh', full_task[1])
+        self.assertIn('全部文件', full_message)
+        with self.assertRaises(ValueError):
+            MODULE.scan_task_for_mode('invalid')
+
     def test_alist_force_refresh_is_sent_only_when_requested(self):
         response = mock.MagicMock()
         response.read.return_value = json.dumps({"code": 200, "data": {"content": []}}).encode()

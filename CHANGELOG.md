@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [0.3.0] - 2026-07-11
 
 ### Added
+- Added a Web scan-mode selector for all files or items created/modified in the last 24 hours.
+- Added `--recent-hours` scanning. It walks every nested directory with refreshed AList listings, includes descendants of recent directories, and generates only matching media and subtitle files.
 - Unified incremental refresh settings into `config/strm-sync.yaml`, while retaining JSON compatibility.
 - Added active and cold-directory scheduling, dead-letter handling, ignored paths, remote-missing tracking, and configurable remote deletion policy.
 - Added async Web tasks, queue health counters, explicit incremental/full-scan actions, and ignore/unignore controls.

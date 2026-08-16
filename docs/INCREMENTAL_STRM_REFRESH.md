@@ -165,6 +165,9 @@ systemctl enable --now xstrm-incremental-refresh.timer
 
 ## Operational Notes
 
+- The Web task selector offers `new` (last 24 hours) and `all`. The recent mode refreshes and walks every configured source directory so it can find additions below old parent folders, but only generates media and subtitles inside the time window.
+- A recent directory makes its whole subtree eligible. This handles copied season folders whose video files retain old source timestamps.
+- CLI equivalent: `python3 scripts/strm_x.py --scan-all --recent-hours 24`.
 - Keep `max_dirs_per_run` conservative because child directories discovered during a run can now consume the same run budget.
 - New, changed, and never-scanned child directories are prioritized, so a parent scan reaches newly added nested seasons within the same budget.
 - Scheduled runs use `max_dirs_per_run` (default 20). Explicit `run-path`/Web scans use `target_max_dirs_per_run` (default 50) and do not enqueue unchanged child directories.
@@ -187,6 +190,8 @@ systemctl enable --now xstrm-incremental-refresh.timer
 
 核心机制：
 
+- Web 扫描模式可选择“新增（最近 24 小时）”或“全部文件”。新增模式会刷新并遍历全部已配置媒体源，以发现旧父目录深处的新增内容，但只生成时间窗口内的视频和字幕；如果目录本身是近期新增，则其全部后代都会纳入。
+- 对应命令行为 `python3 scripts/strm_x.py --scan-all --recent-hours 24`。
 - 新增、发生变化以及从未实际扫描的子目录会优先于旧目录处理；
 - 扫描父级剧集目录时，新加入的剧集/季目录可在同一轮预算内继续向下扫描；
 - 定时任务默认最多处理 20 个目录；Web 指定扫描默认最多处理 50 个新增/变化目录，完全未变化的旧目录不会被递归入队；

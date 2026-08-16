@@ -92,6 +92,7 @@ def main():
     parser.add_argument('--integration', action='store_true', help='Show integration config')
     parser.add_argument('--scan-all', action='store_true', help='Scan all sources')
     parser.add_argument('--scan-path', type=str, help='Scan specified path')
+    parser.add_argument('--recent-hours', type=float, help='Only generate items created or modified within this many hours')
     parser.add_argument('--example-target', action='store_true', help='Show example target path')
 
     args = parser.parse_args()
@@ -115,14 +116,14 @@ def main():
         return
 
     if args.scan_all:
-        result = run_all_sources(config)
+        result = run_all_sources(config, recent_hours=args.recent_hours)
         print(json.dumps({'mode': 'scan_all', **result}, ensure_ascii=False))
         return
 
     if args.scan_path:
         print('当前使用 AList 目录扫描模式：直接扫描逻辑目录并生成对应 .strm。')
         src = build_source_from_input(config, args.scan_path.strip())
-        result = run_source(config, src)
+        result = run_source(config, src, recent_hours=args.recent_hours)
         print(json.dumps({'mode': 'scan_path', **result}, ensure_ascii=False))
         return
 

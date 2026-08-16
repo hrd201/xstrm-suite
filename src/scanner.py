@@ -2,6 +2,7 @@
 import sys
 import time
 import random
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -18,7 +19,31 @@ from .generator import generate_one, resolve_strm_target, map_scan_to_media
 from .subtitle_syncer import get_subtitle_exts, is_subtitle_sync_enabled, sync_subtitles
 
 
-def walk_alist(config: dict, root_path: str):
+def parse_alist_time(value: object) -> Optional[datetime]:
+    """Parse an AList timestamp as an aware UTC datetime."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).strip().replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def item_is_recent(item: dict, cutoff: datetime) -> bool:
+    """Return true when an item was created or modified after the cutoff."""
+    timestamps = [parse_alist_time(item.get(field)) for field in ('created', 'modified')]
+    return any(timestamp is not None and timestamp >= cutoff for timestamp in timestamps)
+
+
+def walk_alist(
+    config: dict,
+    root_path: str,
+    recent_hours: Optional[float] = None,
+    now: Optional[datetime] = None,
+):
     """Recursively walk AList directory and find media and subtitle files.
 
     Args:
@@ -35,17 +60,25 @@ def walk_alist(config: dict, root_path: str):
     subtitle_exts = get_subtitle_exts(config)
     media_found = []
     subtitle_found = []
-    stack = [root_path]
+    if recent_hours is not None and recent_hours <= 0:
+        raise ValueError('recent_hours must be greater than zero')
+    current_time = now or datetime.now(timezone.utc)
+    if current_time.tzinfo is None:
+        current_time = current_time.replace(tzinfo=timezone.utc)
+    cutoff = current_time.astimezone(timezone.utc) - timedelta(hours=recent_hours) if recent_hours else None
+    # The boolean marks a subtree whose parent itself is recent. Files copied
+    # inside a new directory often retain their old source timestamps.
+    stack = [(root_path, False)]
     scanned_dirs = 0
     while stack:
-        current = stack.pop()
+        current, recent_parent = stack.pop()
         print(f'[scan] dir#{scanned_dirs + 1} current={current} pending={len(stack)}', flush=True)
         data = alist_request(config, '/api/fs/list', {
             'path': current,
             'password': '',
             'page': 1,
             'per_page': 0,
-            'refresh': False,
+            'refresh': True,
         })
         scanned_dirs += 1
         time.sleep(random.uniform(1.5, 3.5))
@@ -58,11 +91,14 @@ def walk_alist(config: dict, root_path: str):
                 continue
             child = f"{current.rstrip('/')}/{name}" if current != '/' else f'/{name}'
             is_dir = bool(item.get('is_dir')) or int(item.get('type') or 0) == 1
+            recent_item = recent_parent or cutoff is None or item_is_recent(item, cutoff)
             if is_dir:
-                stack.append(child)
-            elif Path(name).suffix.lower() in media_exts:
+                # Every directory must still be listed to find a recent item
+                # nested below an older parent.
+                stack.append((child, recent_item))
+            elif recent_item and Path(name).suffix.lower() in media_exts:
                 media_found.append(child)
-            elif Path(name).suffix.lower() in subtitle_exts:
+            elif recent_item and Path(name).suffix.lower() in subtitle_exts:
                 subtitle_found.append(child)
     return sorted(media_found), sorted(subtitle_found)
 
@@ -120,7 +156,7 @@ def build_source_from_input(config: dict, source_input: str) -> dict:
     }
 
 
-def run_source(config: dict, src: dict) -> dict:
+def run_source(config: dict, src: dict, recent_hours: Optional[float] = None) -> dict:
     """Run scan on a single source.
 
     Args:
@@ -141,16 +177,18 @@ def run_source(config: dict, src: dict) -> dict:
     print(f'扫描源目录: {scan_path}')
     print(f'STRM 输出前缀: {output_prefix}')
     print(f'扫描模式: {scan_mode}')
+    print(f'时间范围: 最近 {recent_hours:g} 小时' if recent_hours else '时间范围: 全部文件')
     print(f'本次 resolved_strm_mode: {resolved_mode}')
 
     try:
-        files, subtitle_files = walk_alist(config, scan_path)
+        files, subtitle_files = walk_alist(config, scan_path, recent_hours=recent_hours)
     except Exception as e:
         print(f'跳过不可访问的 AList 目录: {scan_path} ({e})')
         return {
             'scan_path': scan_path,
             'output_prefix': output_prefix,
             'resolved_strm_mode': resolved_mode,
+            'recent_hours': recent_hours,
             'found': 0,
             'generated': 0,
             'skipped_existing_file': 0,
@@ -222,6 +260,7 @@ def run_source(config: dict, src: dict) -> dict:
         'scan_path': scan_path,
         'output_prefix': output_prefix,
         'resolved_strm_mode': resolved_mode,
+        'recent_hours': recent_hours,
         'found': total_found,
         'generated': len(generated),
         'skipped_existing_file': skipped_existing_file,
@@ -261,7 +300,7 @@ def discover_sources(config: dict) -> List[dict]:
     return discovered
 
 
-def run_all_sources(config: dict) -> dict:
+def run_all_sources(config: dict, recent_hours: Optional[float] = None) -> dict:
     """Run scan on all configured sources.
 
     Args:
@@ -279,10 +318,11 @@ def run_all_sources(config: dict) -> dict:
         'missing_sources': 0,
         'pruned_state_entries': 0,
         'resolved_strm_mode': config.get('resolved_strm_mode', config.get('strm_mode', 'logical_path')),
+        'recent_hours': recent_hours,
         'items': [],
     }
     for src in config.get('sources', []):
-        summary = run_source(config, src)
+        summary = run_source(config, src, recent_hours=recent_hours)
         totals['sources'] += 1
         totals['found'] += summary['found']
         totals['generated'] += summary['generated']

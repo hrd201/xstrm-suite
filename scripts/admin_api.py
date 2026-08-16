@@ -18,10 +18,20 @@ PORT = 18095
 
 TASKS = {
     'scan': ['bash', str(SCRIPTS_DIR / 'task_incremental_refresh.sh')],
+    'scan_recent': ['bash', str(SCRIPTS_DIR / 'task_scan_recent.sh'), '24'],
     'scan_full': ['bash', str(SCRIPTS_DIR / 'task_scan_incremental.sh')],
     'rebuild': ['bash', str(SCRIPTS_DIR / 'task_rebuild_all.sh')],
     'status': ['bash', str(SCRIPTS_DIR / 'task_status.sh')],
 }
+
+
+def scan_task_for_mode(mode: str) -> tuple[list[str], str]:
+    normalized = (mode or 'new').strip().lower()
+    if normalized == 'new':
+        return TASKS['scan_recent'], '近 24 小时新增扫描已提交'
+    if normalized == 'all':
+        return TASKS['scan_full'], '全部文件扫描已提交'
+    raise ValueError('mode must be new or all')
 
 
 def run_cmd(cmd: list[str]) -> tuple[int, str, str]:
@@ -290,8 +300,13 @@ class Handler(BaseHTTPRequestHandler):
                 data = {k: v[0] for k, v in parse_qs(raw).items()}
 
         if parsed.path == '/api/admin/xstrm/scan':
-            pid = start_cmd(TASKS['scan'])
-            return self._json(202, {'ok': True, 'pid': pid, 'message': '增量刷新任务已提交'})
+            mode = (data.get('mode') or 'new').strip().lower()
+            try:
+                task, message = scan_task_for_mode(mode)
+            except ValueError as exc:
+                return self._json(400, {'ok': False, 'error': str(exc)})
+            pid = start_cmd(task)
+            return self._json(202, {'ok': True, 'pid': pid, 'mode': mode, 'message': message})
 
         if parsed.path == '/api/admin/xstrm/scan-full':
             pid = start_cmd(TASKS['scan_full'])

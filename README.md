@@ -26,6 +26,7 @@ xstrm-suite is designed to solve common challenges when using Emby with cloud st
 - **Queue-Based Incremental Refresh**: Prioritizes new, changed, and never-scanned nested directories, while regenerating missing `.strm` and subtitle files
 - **State Management**: Tracks generated files to avoid duplicates
 - **Flexible Scanning**: Scan all sources or specify individual directories
+- **24-Hour Recent Scan**: The Web UI can scan all configured source trees while generating only files created or modified in the last 24 hours; files inside a newly added directory are included even when they retain older timestamps.
 - **Extended Media Extension Support**: Supports common video and audio formats including `.mp4`, `.mkv`, `.mov`, `.webm`, `.mp3`, `.m4a`, `.flac`, `.aac`, `.ape`, `.wav`, `.ogg`, and more
 - **Configurable Extension Whitelist**: Scanner reads `scan.include_ext` from configuration so formats can be adjusted without code changes
 - **HTTPS Support**: Full HTTPS configuration with Let's Encrypt or custom certificates
