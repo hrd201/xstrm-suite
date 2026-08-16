@@ -725,7 +725,9 @@
     scanPathBtn.onclick = () => {
       const path = pathInput.value.trim();
       if (!path) return showToast('请先输入目录', 'bad');
-      runAction('/api/admin/xstrm/scan-path', {path}, null, '已触发指定目录扫描', '指定目录扫描');
+      const mode = scanModeSelect.value;
+      const label = mode === 'new' ? '指定目录近 24 小时新增扫描' : '指定目录全部文件扫描';
+      runAction('/api/admin/xstrm/scan-path', {path, mode}, null, `已触发${label}`, label);
     };
     ignorePathBtn.onclick = () => {
       const path = pathInput.value.trim();

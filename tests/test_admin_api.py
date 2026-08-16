@@ -25,6 +25,16 @@ class AdminApiTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             MODULE.scan_task_for_mode('invalid')
 
+    def test_scan_path_mode_uses_recent_or_full_path_task(self):
+        target = '/mnt/115/剧集'
+        recent_task, _message = MODULE.scan_path_task_for_mode('new', target)
+        full_task, _message = MODULE.scan_path_task_for_mode('all', target)
+
+        self.assertIn('task_scan_recent.sh', recent_task[1])
+        self.assertEqual(recent_task[-2:], ['24', target])
+        self.assertIn('task_scan_path.sh', full_task[1])
+        self.assertEqual(full_task[-1], target)
+
     def test_alist_force_refresh_is_sent_only_when_requested(self):
         response = mock.MagicMock()
         response.read.return_value = json.dumps({"code": 200, "data": {"content": []}}).encode()

@@ -69,6 +69,23 @@ class RecentScannerTests(unittest.TestCase):
         self.assertEqual(subtitles, [])
         self.assertEqual([call['path'] for call in calls], ['/series', '/series/Old Show'])
 
+    def test_scans_newer_sibling_directory_first(self):
+        listings = {
+            '/series': [
+                {'name': 'Old Show', 'is_dir': True, 'modified': '2026-01-01T00:00:00Z'},
+                {'name': 'New Show', 'is_dir': True, 'created': '2026-08-16T11:00:00Z'},
+            ],
+            '/series/New Show': [],
+            '/series/Old Show': [],
+        }
+
+        _files, _subtitles, calls = self.walk(listings)
+
+        self.assertEqual(
+            [call['path'] for call in calls],
+            ['/series', '/series/New Show', '/series/Old Show'],
+        )
+
     def test_invalid_recent_window_is_rejected(self):
         with self.assertRaisesRegex(ValueError, 'greater than zero'):
             scanner.walk_alist(self.config, '/series', recent_hours=0, now=self.now)

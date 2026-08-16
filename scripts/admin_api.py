@@ -34,6 +34,21 @@ def scan_task_for_mode(mode: str) -> tuple[list[str], str]:
     raise ValueError('mode must be new or all')
 
 
+def scan_path_task_for_mode(mode: str, target: str) -> tuple[list[str], str]:
+    normalized = (mode or 'new').strip().lower()
+    if normalized == 'new':
+        return (
+            ['bash', str(SCRIPTS_DIR / 'task_scan_recent.sh'), '24', target],
+            '指定目录近 24 小时新增扫描已提交',
+        )
+    if normalized == 'all':
+        return (
+            ['bash', str(SCRIPTS_DIR / 'task_scan_path.sh'), target],
+            '指定目录全部文件扫描已提交',
+        )
+    raise ValueError('mode must be new or all')
+
+
 def run_cmd(cmd: list[str]) -> tuple[int, str, str]:
     proc = subprocess.run(cmd, cwd=BASE_DIR, capture_output=True, text=True)
     return proc.returncode, proc.stdout, proc.stderr
@@ -320,8 +335,13 @@ class Handler(BaseHTTPRequestHandler):
             target = (data.get('path') or '').strip()
             if not target:
                 return self._json(400, {'ok': False, 'error': 'path required'})
-            pid = start_cmd(['bash', str(SCRIPTS_DIR / 'task_incremental_refresh.sh'), target])
-            return self._json(202, {'ok': True, 'pid': pid, 'path': target, 'message': '指定目录已加入递归刷新队列'})
+            mode = (data.get('mode') or 'new').strip().lower()
+            try:
+                task, message = scan_path_task_for_mode(mode, target)
+            except ValueError as exc:
+                return self._json(400, {'ok': False, 'error': str(exc)})
+            pid = start_cmd(task)
+            return self._json(202, {'ok': True, 'pid': pid, 'path': target, 'mode': mode, 'message': message})
 
         if parsed.path in ('/api/admin/xstrm/ignore', '/api/admin/xstrm/unignore'):
             target = (data.get('path') or '').strip()

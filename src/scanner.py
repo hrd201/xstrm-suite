@@ -34,8 +34,15 @@ def parse_alist_time(value: object) -> Optional[datetime]:
 
 def item_is_recent(item: dict, cutoff: datetime) -> bool:
     """Return true when an item was created or modified after the cutoff."""
+    timestamp = item_latest_time(item)
+    return timestamp is not None and timestamp >= cutoff
+
+
+def item_latest_time(item: dict) -> Optional[datetime]:
+    """Return the latest usable creation or modification timestamp."""
     timestamps = [parse_alist_time(item.get(field)) for field in ('created', 'modified')]
-    return any(timestamp is not None and timestamp >= cutoff for timestamp in timestamps)
+    valid = [timestamp for timestamp in timestamps if timestamp is not None]
+    return max(valid) if valid else None
 
 
 def walk_alist(
@@ -85,6 +92,7 @@ def walk_alist(
         if scanned_dirs % 10 == 0:
             time.sleep(random.uniform(5.0, 10.0))
         content = ((data.get('data') or {}).get('content') or [])
+        child_directories = []
         for item in content:
             name = item.get('name') or ''
             if not name:
@@ -95,11 +103,16 @@ def walk_alist(
             if is_dir:
                 # Every directory must still be listed to find a recent item
                 # nested below an older parent.
-                stack.append((child, recent_item))
+                child_directories.append((item_latest_time(item), child, recent_item))
             elif recent_item and Path(name).suffix.lower() in media_exts:
                 media_found.append(child)
             elif recent_item and Path(name).suffix.lower() in subtitle_exts:
                 subtitle_found.append(child)
+        minimum_time = datetime.min.replace(tzinfo=timezone.utc)
+        child_directories.sort(key=lambda entry: entry[0] or minimum_time, reverse=True)
+        # The stack is LIFO, so append oldest first to scan newest first.
+        for _timestamp, child, recent_item in reversed(child_directories):
+            stack.append((child, recent_item))
     return sorted(media_found), sorted(subtitle_found)
 
 
