@@ -70,6 +70,9 @@ All notable changes to this project will be documented in this file.
 - **Scanner extension loading**: `src/scanner.py` now respects `scan.include_ext` from configuration instead of relying only on the built-in constant set.
 - **Music directory scanning**: Fixed the issue where audio extensions could be configured but were not actually picked up during scans, allowing paths like `/mnt/115/音乐` to detect audio media correctly.
 
+### Removed
+- **Scheduled scan entry point**: Temporarily removed the unfinished scheduled-scan menu. Its trigger strategy, resource limits, and failure recovery require redesign; manual scans remain available through the CLI and web admin interface.
+
 ## [0.2.0] - 2026-03-16
 
 ### Added

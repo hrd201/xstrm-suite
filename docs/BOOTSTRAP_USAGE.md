@@ -71,5 +71,5 @@ It provides:
 
 - production nginx enable/reload wiring
 - emby2alist daemonization details
-- cron/periodic scan jobs
+- scheduled scan jobs; the previous placeholder was removed pending a redesign of triggers, resource limits, and failure recovery
 - full interactive system service management

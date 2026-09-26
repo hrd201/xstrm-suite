@@ -30,18 +30,9 @@ def print_main_menu():
     print('1. 从已配置 AList 目录中选择扫描')
     print('2. 扫描指定 AList 目录')
     print('3. 查看同源配置')
-    print('4. 定时扫描设定')
-    print('5. 查看当前配置')
-    print('6. 查看状态文件')
+    print('4. 查看当前配置')
+    print('5. 查看状态文件')
     print('0. 退出')
-
-
-def cron_menu():
-    """Print cron menu."""
-    print('\n定时扫描设定')
-    print('1. 自动发现设置（待实现）')
-    print('2. 自定义扫描设置（待实现）')
-    print('当前版本已支持：按已配置的 AList 目录或手工输入逻辑目录扫描。')
 
 
 def choose_discovered_source(config: dict):
@@ -138,10 +129,8 @@ def main():
         elif choice == '3':
             show_integration(config)
         elif choice == '4':
-            cron_menu()
-        elif choice == '5':
             show_config(config)
-        elif choice == '6':
+        elif choice == '5':
             show_state()
         elif choice == '0':
             print('退出')

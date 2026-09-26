@@ -211,10 +211,11 @@ Options:
 - `1` - Scan from configured AList directories
 - `2` - Scan specified AList directory
 - `3` - View integration config
-- `4` - Configure cron jobs
-- `5` - View current config
-- `6` - View state file
+- `4` - View current config
+- `5` - View state file
 - `0` - Exit
+
+> Scheduled scanning is temporarily unavailable while its trigger strategy, resource limits, and failure recovery are redesigned. Start scans manually from the CLI or web admin interface.
 
 ### Web Admin Interface
 
