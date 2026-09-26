@@ -171,13 +171,6 @@ install_systemd_services() {
             > "$SERVICE_DIR/xstrm-admin-api.service"
         log_success "服务已安装: xstrm-admin-api.service"
     fi
-    for unit in incremental-strm-refresh.service incremental-strm-refresh.timer; do
-        if [ -f "$INSTALL_ROOT/services/$unit" ]; then
-            sed "s|/opt/xstrm-suite|$INSTALL_ROOT|g" "$INSTALL_ROOT/services/$unit" > "$SERVICE_DIR/$unit"
-            log_success "服务已安装: $unit"
-        fi
-    done
-    
     # 重新加载 systemd
     if need_cmd systemctl; then
         systemctl daemon-reload 2>/dev/null || true
@@ -279,7 +272,6 @@ emby2alist:
 incremental_refresh:
   enabled: true
   state_db: /opt/xstrm-suite/data/incremental-strm.sqlite3
-  schedule_times: ["02:30", "14:30"]
   max_dirs_per_run: 20
   target_max_dirs_per_run: 50
   request_interval_seconds: 3
@@ -338,8 +330,6 @@ start_services() {
         log_info "启动 xstrm-admin-api 服务..."
         systemctl enable xstrm-admin-api.service 2>/dev/null || true
         systemctl start xstrm-admin-api.service 2>/dev/null || true
-        systemctl enable --now incremental-strm-refresh.timer 2>/dev/null || true
-        
         if systemctl is-active --quiet xstrm-admin-api.service; then
             log_success "xstrm-admin-api 服务已启动"
         else

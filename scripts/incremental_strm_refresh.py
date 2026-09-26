@@ -122,7 +122,6 @@ class Config:
     cold_dirs_per_run: int
     remote_delete_policy: str
     remote_delete_grace_days: int
-    schedule_times: list[str]
     include_extensions: set[str]
     exclude_name_contains: list[str]
     subtitle_sync: bool = True
@@ -174,7 +173,6 @@ class Config:
             cold_dirs_per_run=int(inc.get("cold_dirs_per_run", 4)),
             remote_delete_policy=str(inc.get("remote_delete_policy", "keep")),
             remote_delete_grace_days=int(inc.get("remote_delete_grace_days", 7)),
-            schedule_times=list(inc.get("schedule_times", [])),
             include_extensions={ext.lower() for ext in extensions},
             exclude_name_contains=[s.lower() for s in (raw.get("exclude_name_contains") or inc.get("exclude_name_contains", []))],
             subtitle_sync=bool(scan.get("subtitle_sync", True)),
@@ -953,44 +951,6 @@ def show_status(config: Config) -> None:
     print(json.dumps(State(config.state_db).summary(), ensure_ascii=False, indent=2))
 
 
-def seconds_until_next_schedule(schedule_times: list[str]) -> int:
-    now = datetime.now()
-    candidates = []
-    for item in schedule_times:
-        hour_text, minute_text = item.split(":", 1)
-        candidate = now.replace(
-            hour=int(hour_text),
-            minute=int(minute_text),
-            second=0,
-            microsecond=0,
-        )
-        if candidate <= now:
-            candidate += timedelta(days=1)
-        candidates.append(candidate)
-    if not candidates:
-        return 0
-    return max(1, int((min(candidates) - now).total_seconds()))
-
-
-def daemon(config: Config, interval_minutes: int, use_schedule: bool) -> None:
-    if use_schedule and not config.schedule_times:
-        raise RuntimeError("schedule mode requires incremental_refresh.schedule_times in config")
-
-    while True:
-        if use_schedule:
-            wait_seconds = seconds_until_next_schedule(config.schedule_times)
-            next_at = datetime.now() + timedelta(seconds=wait_seconds)
-            print(f"[{utc_now()}] waiting until {next_at.strftime('%Y-%m-%d %H:%M:%S')}", flush=True)
-            time.sleep(wait_seconds)
-
-        started = utc_now()
-        print(f"[{started}] incremental refresh started", flush=True)
-        stats = run_once(config)
-        print(f"[{utc_now()}] incremental refresh finished: {stats}", flush=True)
-        if not use_schedule:
-            time.sleep(max(60, interval_minutes * 60))
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="Incrementally refresh Alist files into STRM files.")
     parser.add_argument("--config", default="config/strm-sync.yaml", help="Path to YAML or JSON config.")
@@ -1014,10 +974,6 @@ def main() -> int:
 
     sub.add_parser("status", help="Show queue, dead-letter, ignore and remote-missing counts.")
 
-    daemon_parser = sub.add_parser("daemon", help="Run repeatedly with a fixed interval.")
-    daemon_parser.add_argument("--interval-minutes", type=int, default=120)
-    daemon_parser.add_argument("--schedule", action="store_true", help="Use incremental_refresh.schedule_times from config.")
-
     args = parser.parse_args()
     config = Config.load(Path(args.config))
 
@@ -1033,10 +989,6 @@ def main() -> int:
     if args.command == "status":
         show_status(config)
         return 0
-    if args.command == "daemon":
-        daemon(config, args.interval_minutes, args.schedule)
-        return 0
-
     stats = run_once(config, target_root=args.remote_path if args.command == "run-path" else None)
     print(json.dumps(stats, ensure_ascii=False, indent=2))
     return 2 if stats["errors"] else 0

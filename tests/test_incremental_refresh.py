@@ -52,7 +52,6 @@ class IncrementalRefreshTests(unittest.TestCase):
             cold_dirs_per_run=0,
             remote_delete_policy="keep",
             remote_delete_grace_days=7,
-            schedule_times=[],
             include_extensions={".mkv", ".mp4"},
             exclude_name_contains=[],
         )

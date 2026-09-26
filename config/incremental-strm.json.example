@@ -41,10 +41,6 @@
     "behind the scenes"
   ],
   "incremental_refresh": {
-    "schedule_times": [
-      "02:30",
-      "14:30"
-    ],
     "max_dirs_per_run": 20,
     "request_interval_seconds": 3,
     "jitter_seconds": 10,

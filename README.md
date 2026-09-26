@@ -215,7 +215,7 @@ Options:
 - `5` - View state file
 - `0` - Exit
 
-> Scheduled scanning is temporarily unavailable while its trigger strategy, resource limits, and failure recovery are redesigned. Start scans manually from the CLI or web admin interface.
+> Scheduled scanning is temporarily unavailable while its trigger strategy, resource limits, overlap prevention, and failure recovery are redesigned. Daemon mode, the systemd timer, and installer integration have been removed; start scans manually from the CLI or web admin interface.
 
 ### Web Admin Interface
 

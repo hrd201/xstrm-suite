@@ -100,68 +100,10 @@ python3 scripts/incremental_strm_refresh.py \
   run-once
 ```
 
-Run as a simple daemon with fixed intervals:
-
-```bash
-python3 scripts/incremental_strm_refresh.py \
-  --config config/strm-sync.yaml \
-  daemon --interval-minutes 120
-```
-
-Run as a daemon using configured times:
-
-```bash
-python3 scripts/incremental_strm_refresh.py \
-  --config config/strm-sync.yaml \
-  daemon --schedule
-```
-
-For production, prefer a systemd timer or cron so process restarts are managed by the OS.
-
-## systemd Example
-
-`/etc/systemd/system/xstrm-incremental-refresh.service`:
-
-```ini
-[Unit]
-Description=xstrm incremental STRM refresh
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=oneshot
-WorkingDirectory=/opt/xstrm-suite
-ExecStart=/opt/xstrm-suite/scripts/task_incremental_refresh.sh
-Nice=10
-IOSchedulingClass=best-effort
-IOSchedulingPriority=7
-```
-
-The wrapper provides a shared write lock and Web task status.
-
-`/etc/systemd/system/xstrm-incremental-refresh.timer`:
-
-```ini
-[Unit]
-Description=Run xstrm incremental STRM refresh twice daily
-
-[Timer]
-OnCalendar=*-*-* 02:30:00
-OnCalendar=*-*-* 14:30:00
-Persistent=false
-RandomizedDelaySec=10min
-Unit=xstrm-incremental-refresh.service
-
-[Install]
-WantedBy=timers.target
-```
-
-Enable it:
-
-```bash
-systemctl daemon-reload
-systemctl enable --now xstrm-incremental-refresh.timer
-```
+Scheduled and daemon scan modes are temporarily unavailable. Their trigger
+strategy, resource limits, overlap prevention, and failure recovery need to be
+redesigned before automatic execution is safe. Use `run-once`, `run-path`, or
+the web admin interface to start a scan manually.
 
 ## Operational Notes
 
@@ -170,7 +112,7 @@ systemctl enable --now xstrm-incremental-refresh.timer
 - CLI equivalent: `python3 scripts/strm_x.py --scan-all --recent-hours 24`.
 - Keep `max_dirs_per_run` conservative because child directories discovered during a run can now consume the same run budget.
 - New, changed, and never-scanned child directories are prioritized, so a parent scan reaches newly added nested seasons within the same budget.
-- Scheduled runs use `max_dirs_per_run` (default 20). Explicit `run-path`/Web scans use `target_max_dirs_per_run` (default 50) and do not enqueue unchanged child directories.
+- Manual full refreshes use `max_dirs_per_run` (default 20). Explicit `run-path`/Web scans use `target_max_dirs_per_run` (default 50) and do not enqueue unchanged child directories.
 - Incremental scans also download missing subtitle files when `scan.subtitle_sync` is enabled (the default).
 - Use request intervals and jitter to avoid bursty AList access.
 - A transient timeout or TLS handshake failure gets one delayed retry; persistent failures remain queued for the configured retry window.

@@ -71,7 +71,7 @@ All notable changes to this project will be documented in this file.
 - **Music directory scanning**: Fixed the issue where audio extensions could be configured but were not actually picked up during scans, allowing paths like `/mnt/115/音乐` to detect audio media correctly.
 
 ### Removed
-- **Scheduled scan entry point**: Temporarily removed the unfinished scheduled-scan menu. Its trigger strategy, resource limits, and failure recovery require redesign; manual scans remain available through the CLI and web admin interface.
+- **Scheduled scanning**: Temporarily removed the scheduled-scan menu, daemon mode, systemd timer, and installer integration. Trigger strategy, resource limits, overlap prevention, and failure recovery require redesign; manual scans remain available through the CLI and web admin interface.
 
 ## [0.2.0] - 2026-03-16
 
