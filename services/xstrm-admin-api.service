@@ -8,7 +8,8 @@ User=xstrm
 Group=xstrm
 SupplementaryGroups=docker
 WorkingDirectory=/opt/xstrm-suite
-ExecStart=/usr/bin/python3 /opt/xstrm-suite/scripts/admin_api.py
+Environment="PATH=/opt/xstrm-suite/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/opt/xstrm-suite/.venv/bin/python3 /opt/xstrm-suite/scripts/admin_api.py
 Restart=always
 RestartSec=2
 UMask=0077

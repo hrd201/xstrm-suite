@@ -109,6 +109,8 @@ def main():
     if args.scan_all:
         result = run_all_sources(config, recent_hours=args.recent_hours)
         print(json.dumps({'mode': 'scan_all', **result}, ensure_ascii=False))
+        if result.get('missing_sources') or result.get('subtitle_failed'):
+            raise SystemExit(1)
         return
 
     if args.scan_path:
@@ -116,6 +118,8 @@ def main():
         src = build_source_from_input(config, args.scan_path.strip())
         result = run_source(config, src, recent_hours=args.recent_hours)
         print(json.dumps({'mode': 'scan_path', **result}, ensure_ascii=False))
+        if result.get('missing_source') or result.get('subtitle_failed'):
+            raise SystemExit(1)
         return
 
     # Interactive mode

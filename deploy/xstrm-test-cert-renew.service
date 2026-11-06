@@ -1,0 +1,11 @@
+[Unit]
+Description=Renew xstrm test HTTPS certificate
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/bin/bash /opt/xstrm-suite-test/acme-tool/acme.sh --cron --home /opt/xstrm-suite-test/acme-tool --config-home /opt/xstrm-suite-test/cert-manager
+NoNewPrivileges=true
+PrivateTmp=true

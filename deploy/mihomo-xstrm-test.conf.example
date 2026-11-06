@@ -1,0 +1,7 @@
+# Test host only: install as a systemd drop-in for the existing mihomo service.
+# Check that priority 8990 is free and that the HTTPS port is still 18443.
+[Service]
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+ExecStartPre=-/usr/sbin/ip -4 rule del priority 8990 ipproto tcp sport 18443 lookup main
+ExecStartPost=/usr/sbin/ip -4 rule add priority 8990 ipproto tcp sport 18443 lookup main
+ExecStopPost=-/usr/sbin/ip -4 rule del priority 8990 ipproto tcp sport 18443 lookup main

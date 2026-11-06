@@ -6,23 +6,18 @@ BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 source "$BASE_DIR/scripts/task_lib.sh"
 
 TASK_NAME="rebuild_all"
-LOCK_DIR="$TASK_DIR/xstrm-write.lock"
 LOG_FILE="$(task_log_path "$TASK_NAME")"
 STARTED_AT="$(now_iso)"
 
-if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  summary="全量重建任务正在执行中"
-  emit_result "TASK_RUNNING" "$TASK_NAME" "$LOG_FILE" "$summary"
-  exit 2
-fi
-trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
+task_lock
 
 status_write "$TASK_NAME" true null "正在全量重建 STRM" "$LOG_FILE" "$STARTED_AT" ""
 
 OUTPUT_ROOT=$(python3 - <<PY
 import yaml
+import os
 from pathlib import Path
-cfg = yaml.safe_load(Path(${BASE_DIR@Q}).joinpath('config/strm-sync.yaml').read_text(encoding='utf-8')) or {}
+cfg = yaml.safe_load(Path(os.environ.get('XSTRM_CONFIG_PATH', Path(${BASE_DIR@Q}) / 'config/strm-sync.yaml')).read_text(encoding='utf-8')) or {}
 print(cfg.get('output_root', '/emby-strm'))
 PY
 )

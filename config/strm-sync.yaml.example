@@ -1,11 +1,16 @@
 output_root: /emby-strm
 state_file: /opt/xstrm-suite/data/strm-sync-state.json
 mode: mirror
-strm_mode: auto
+strm_mode: logical_path
 alist:
   base_url: http://127.0.0.1:5244
   token: YOUR_ALIST_TOKEN
   public_url: http://127.0.0.1:5244
+emby:
+  host: http://127.0.0.1:8096
+  api_key: YOUR_EMBY_API_KEY
+playback:
+  backend: emby2alist
 scan:
   incremental_only: true
   subtitle_sync: true
@@ -15,14 +20,16 @@ scan:
     - .avi
     - .ts
     - .m2ts
+# 在管理中心“定时任务”中创建，配置保存后自动生效。
+scheduled_tasks: []
 sources:
   - scan_mode: alist
     scan_path: /mnt/cloud/movies
-    output_prefix: /cloud/movies
+    output_prefix: /mnt/cloud/movies
     library_type: movie
   - scan_mode: alist
     scan_path: /mnt/cloud/series
-    output_prefix: /cloud/series
+    output_prefix: /mnt/cloud/series
     library_type: series
 emby2alist:
   media_mount_path:

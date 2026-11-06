@@ -6,16 +6,10 @@ BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 source "$BASE_DIR/scripts/task_lib.sh"
 
 TASK_NAME="scan_incremental"
-LOCK_DIR="$TASK_DIR/xstrm-write.lock"
 LOG_FILE="$(task_log_path "$TASK_NAME")"
 STARTED_AT="$(now_iso)"
 
-if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  summary="任务正在执行中"
-  emit_result "TASK_RUNNING" "$TASK_NAME" "$LOG_FILE" "$summary"
-  exit 2
-fi
-trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
+task_lock
 
 status_write "$TASK_NAME" true null "正在扫描新增影片" "$LOG_FILE" "$STARTED_AT" ""
 

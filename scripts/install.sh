@@ -81,25 +81,11 @@ install_python() {
     log_info "检查 Python 环境..."
     
     if need_cmd python3; then
-        local py_version
-        py_version=$(python3 --version 2>&1 | grep -oP '\d+\.\d+' | head -1)
         log_success "Python3 已安装: $(python3 --version 2>&1)"
-        
-        # 检查 PyYAML
-        if python3 - <<'PY' 2>/dev/null
-import yaml
-PY
-        then
-            log_success "PyYAML 已安装"
-        else
-            log_info "安装 PyYAML..."
-            python3 -m pip install --quiet PyYAML
-            log_success "PyYAML 安装完成"
-        fi
     else
         log_info "安装 Python3..."
         if need_cmd apt-get; then
-            apt-get update && apt-get install -y python3 python3-pip python3-yaml
+            apt-get update && apt-get install -y python3 python3-pip python3-venv
         elif need_cmd dnf; then
             dnf install -y python3 python3-pip python3-PyYAML
         elif need_cmd yum; then
@@ -184,10 +170,10 @@ sync_project() {
     mkdir -p "$INSTALL_ROOT"
     
     # 排除不必要的文件
-    rsync -av --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
+    rsync -av --exclude='.git' --exclude='.venv' --exclude='__pycache__' --exclude='*.pyc' \
         --exclude='data' --exclude='logs' \
         --exclude='config/runtime.yaml' --exclude='config/strm-sync.yaml' \
-        --exclude='config/incremental-strm.json' \
+        --exclude='config/incremental-strm.json' --exclude='config/cert/' --exclude='nginx/conf.d/.htpasswd-xstrm-admin' \
         "$BASE_DIR/" "$INSTALL_ROOT/"
     
     # 确保脚本可执行
@@ -426,6 +412,8 @@ main() {
     
     # 2. 同步项目
     sync_project
+    bash "$INSTALL_ROOT/scripts/install_python_requirements.sh" "$INSTALL_ROOT"
+    export PATH="$INSTALL_ROOT/.venv/bin:$PATH"
     
     # 3. 配置
     if [ "$NON_INTERACTIVE" = true ]; then

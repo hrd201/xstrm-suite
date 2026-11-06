@@ -14,6 +14,10 @@ nginx-cache/
 /data/*.json
 /data/*.sqlite
 /data/*.sqlite3
+/data/scheduler.sqlite3*
+/data/scheduler.owner
+/data/tasks/
+/data/identity/
 !/data/.gitkeep
 
 # local incremental refresh config may contain AList tokens
@@ -30,3 +34,19 @@ __pycache__/
 # env
 .env
 .env.*
+
+/config/*.previous
+/config/*.lock
+/config/*.tmp
+/deploy/.htpasswd
+/deploy/test-config/
+/deploy/test-data/
+/deploy/test-*/
+
+/deploy/wheels/*.whl
+/acme-tool/
+/cert-manager/
+
+.venv/
+
+/nginx/conf.d/.htpasswd-xstrm-admin

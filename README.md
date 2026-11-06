@@ -1,382 +1,101 @@
 # xstrm-suite
 
-[English](./README.md) | [中文](./README.zh-CN.md)
+[English](README.md) | [中文](README.zh-CN.md)
 
-STRM file management system for Emby + AList integration. Automatically generates `.strm` files that point to AList-hosted media files, enabling Emby to play directly from AList storage.
-
-> This project is based on [embyExternalUrl](https://github.com/bpking1/embyExternalUrl) and modified to address specific needs.
-
-## Project Purpose
-
-xstrm-suite is designed to solve common challenges when using Emby with cloud storage (like AList):
-
-1. **Prevent Account Risks**: Avoid cloud storage account bans caused by Emby's aggressive scraping
-2. **Improve Performance**: Eliminate slow metadata refresh, recognition, and fetching issues
-3. **Flexible Configuration**: No need to modify existing Emby or AList configurations
-4. **Auto-Discovery**: Automatically obtain Emby and AList configurations/paths via API
-5. **Unified Port**: Works alongside direct proxy on the same port, plugin-style management
-
-## Features
-
-- **Subtitle Sync**: Full and queue-based incremental scans download missing subtitle files from nested AList directories to the matching local STRM tree.
-- **Web Admin UI**: A responsive operations dashboard with clear task priority, live queue health, scanning, configuration, and date-sorted directory browsing.
-- **AList Integration**: Direct interaction with AList API for file listing and link resolution.
-- **Automatic STRM Generation**: Automatically generates `.strm` files for your media library
-- **Incremental Sync**: Only generates missing STRM files, skips existing ones
-- **Queue-Based Incremental Refresh**: Prioritizes new, changed, and never-scanned nested directories, while regenerating missing `.strm` and subtitle files
-- **State Management**: Tracks generated files to avoid duplicates
-- **Flexible Scanning**: Scan all sources or specify individual directories
-- **24-Hour Recent Scan**: The Web UI can scan all configured source trees while generating only files created or modified in the last 24 hours; files inside a newly added directory are included even when they retain older timestamps.
-- **Extended Media Extension Support**: Supports common video and audio formats including `.mp4`, `.mkv`, `.mov`, `.webm`, `.mp3`, `.m4a`, `.flac`, `.aac`, `.ape`, `.wav`, `.ogg`, and more
-- **Configurable Extension Whitelist**: Scanner reads `scan.include_ext` from configuration so formats can be adjusted without code changes
-- **HTTPS Support**: Full HTTPS configuration with Let's Encrypt or custom certificates
+A Web control plane for cloud-backed Emby libraries: generate local STRMs from AList/OpenList, schedule scans, diagnose redirects and repair movie identification through Emby's metadata providers. Playback supports MediaWarp or the existing Nginx/njs/emby2Alist backend.
 
 ## Architecture
 
-```
-xstrm-suite/
-├── src/                      # Core runtime code
-│   ├── config.py             # Configuration loading
-│   ├── state.py              # State management
-│   ├── alist_client.py       # AList API client
-│   ├── scanner.py            # Media scanning logic
-│   └── generator.py          # STRM file generation
-├── cmd/                      # CLI entry point
-├── scripts/                  # Installation and运维 scripts
-├── config/                   # Configuration templates
-├── nginx/                    # Nginx configuration
-├── web/admin/                # Admin web UI
-└── data/                     # Runtime data (state, logs)
+```text
+AList/OpenList directories → xstrm → local STRMs + optional subtitles → Emby
+VidHub / Emby client → Nginx gateway → playback backend → OpenList → cloud CDN
 ```
 
-## Requirements
+STRMs retain original logical cloud paths. The playback backend resolves them on demand. Identity repair updates Emby through its API and saves a confirmed local binding; it does not rename cloud videos or rewrite STRMs.
 
-- **Python 3.8+**
-- **PyYAML**
-- **Docker & Docker Compose**
-- **AList v3+** (external or self-hosted)
-- **Emby Server** (for media playback)
+## Web pages
 
-## Installation
+| Page | Purpose |
+| --- | --- |
+| Overview | Task status, queue summary and recent logs |
+| Scan tasks | Scan sources or a subtree, browse directories, explicitly rebuild local STRMs |
+| Scheduled tasks | Per-source interval/daily/Cron plans, run now, enable/disable, bounded retries and history |
+| Movie identification | Find unidentified/incomplete movie STRMs, preview candidates and confirm a match |
+| Media sources | Save remote directories and output prefixes |
+| Settings | Connections, credentials, subtitles and playback backend selection |
 
-### Quick Start
+Saving sources does not start a scan. Saving playback settings does not reload the gateway; review and apply them using the deployment script.
+
+## Scanning and limits
+
+- **All files:** enumerate selected trees and generate missing STRMs, skipping existing files. Use this for the initial import.
+- **Recent:** still enumerate the trees, but generate only files within the creation/modification window. Zero means no eligible files in that window, not an empty library.
+- **Queue-based refresh:** a separate existing CLI workflow prioritizes candidate directories using a local index and request budget.
+- **Subtitles:** optionally download supported sidecars to the matching STRM tree.
+
+Request pacing and serialized writes reduce unnecessary pressure; they cannot guarantee avoidance of provider rate limits or account restrictions. Recent scans still list older directories and currently refresh those listings. Schedule large libraries conservatively.
+
+## Requirements and installation
+
+Linux, Bash, flock (util-linux), OpenSSL, **Python 3.10+**, and the packages in [requirements.txt](requirements.txt). The admin image uses Python 3.13. Docker deployments require Docker Engine and Compose v2. Emby and the admin service must read the shared STRM directory at the same configured path.
+
+Start with the [isolated Docker guide](deploy/README.en.md), which prepares separate admin, gateway, Emby and OpenList containers and optionally enables pinned MediaWarp:
 
 ```bash
-# Clone the repository
 git clone https://github.com/hrd201/xstrm-suite.git
 cd xstrm-suite
-
-# Run bootstrap installation (Recommended path: /opt/xstrm-suite/)
-cd scripts
-sudo ./bootstrap.sh
+docker compose -f deploy/compose.test.yaml build admin
+# Continue with preparation and a unique password in deploy/README.en.md.
 ```
 
-The bootstrap script will interactively prompt for:
-- Emby server address and API key
-- AList installation method (Docker/local/custom)
-- AList protocol, host, port, token, and public URL
-- Nginx port and HTTPS configuration
-- Media mount root path
-- STRM output directory
-- Scan source list
+Published ports default to 127.0.0.1. Set XSTRM_BIND_IP for LAN access; configure certificates and XSTRM_HTTPS_BIND_IP before exposing TLS. Runtime credentials, certificates and databases are excluded from Git and image build contexts.
 
-> **Note**: It is highly recommended to install the project in `/opt/xstrm-suite/` for consistency and easier future migrations.
-
-### Manual Installation
-
-If you prefer manual installation:
-
-#### 1. Install Dependencies
+The native installer maintains the legacy Nginx/njs deployment separately:
 
 ```bash
-# Install Python dependencies
-pip3 install pyyaml
-
-# Install Docker (if not already installed)
-curl -fsSL https://get.docker.com | sh
-systemctl enable docker
-systemctl start docker
-
-# Install Docker Compose
-pip3 install docker-compose
+sudo bash scripts/install.sh
+# scripts/bootstrap.sh is a compatibility alias.
 ```
 
-#### 2. Configure AList
+Prepare Python 3.10+, venv support, rsync, Docker and system tools first. Install/upgrade scripts install all Python dependencies in the installation's .venv; systemd and task wrappers use it. The standalone API-service installer requires the main installer to create the xstrm user first. Configure a unique Basic Auth password before using the gateway; no working shared password is shipped.
 
-Make sure your AList server is running and you have:
-- AList base URL (e.g., `http://YOUR_ALIST_HOST:5388`)
-- Admin token
+## First use
 
-#### 3. Create Configuration
+1. Initialize Emby/OpenList and authorize storage. Save their connections in Settings. Signed downloads need the OpenList permanent token, not a temporary login JWT.
+2. Save a small source. Logical STRM targets must match actual OpenList paths; using the same scan_path and output_prefix is straightforward.
+3. Run **All files**, add the shared output directory to an Emby Movies or TV library, and enable metadata/image providers.
+4. Apply the backend and connect VidHub to the gateway address to exercise redirect playback.
+5. Create a scheduled task after checking the initial scan. Scheduling runs inside admin, without a second host Cron process.
+6. In Movie identification, click **Search movie and posters** (the UI is currently Chinese). A dialog opens and searches unambiguous names automatically. Conflicting years/IDs need review. Check title, year and poster before confirming.
+
+## Identification and health checks
+
+Movie repair supports movie STRMs inside the configured output root. Use All movies to correct existing wrong matches. Posters appear in the search dialog; failed loads show a retry action. Some providers omit candidate overviews, which are labelled unavailable.
+
+After confirmation, the service submits to Emby and reads back ID, title, overview and poster availability. Ambiguous timeouts or unverified requested image replacement are not reported as complete. Bindings persist by server identity, original STRM path and target-content fingerprint. After library rebuilding, a matching binding can be searched and explicitly confirmed again. Path/content changes require reassociation.
+
+Health checks verify file presence and an HTTP(S) redirect. They do not follow CDN links or prove playable video, seeking, subtitles or audio selection; validate those in VidHub.
+
+## Backup, upgrade and validation
+
+Back up configuration, STRMs, Emby data, data/scheduler.sqlite3, data/identity/ and scan state/indexes. Identity records contain private media paths/provider responses. Terminal jobs remove their execution snapshots.
+
+For Docker, check active tasks, rebuild admin and recreate only that service. Apply backend configuration with deploy/apply_playback.sh mediawarp or emby2alist. Legacy rollback requires a saved legacy gateway and Nginx with njs. Keep production until client acceptance and parallel observation are complete.
+
+- [Deployment](deploy/README.en.md) / [部署说明](deploy/README.md)
+- [Scheduling](docs/SCHEDULER.en.md) / [定时任务](docs/SCHEDULER.md)
+- [Identity repair](docs/IDENTITY.en.md) / [识别修复](docs/IDENTITY.md)
+- [Changelog](CHANGELOG.md) / [更新日志](CHANGELOG.zh-CN.md)
 
 ```bash
-# Recommended: Move project to /opt/xstrm-suite/
-# sudo mv xstrm-suite /opt/xstrm-suite/
-# cd /opt/xstrm-suite/
-
-# Copy the template configuration
-cp config/strm-sync.yaml.example config/strm-sync.yaml
-
-# Edit the configuration
-vim config/strm-sync.yaml
+python -m pip install -r requirements.txt
+python -m unittest discover -s tests -v
+for script in scripts/*.sh deploy/*.sh bin/xstrm bin/xstrm-admin; do bash -n "$script"; done
+node --check web/admin/identity.js
 ```
 
-Required configuration:
+Full process-group and kernel-lock checks require Linux. CI covers Python 3.10 and 3.13. Temporary-data tests do not replace client acceptance.
 
-```yaml
-output_root: /emby-strm
-mode: mirror
-alist:
-  base_url: http://YOUR_ALIST_IP:5388
-  token: YOUR_ALIST_TOKEN
-  public_url: https://your-domain.com:5388
-scan:
-  default_depth: 1
-  incremental_only: true
-  include_ext:
-    - .mp4
-    - .mkv
-    - .avi
-    - .ts
-    - .m2ts
-    - .mov
-    - .wmv
-    - .flv
-    - .webm
-    - .m4v
-    - .mp3
-    - .m4a
-    - .flac
-    - .aac
-    - .ape
-    - .wav
-    - .ogg
-    - .opus
-sources:
-  - path: /115/电影
-    library_type: movie
-    watch_depth: 1
-    output_prefix: /115/电影
-    scan_path: /mnt/115/电影
-  - path: /115/剧集
-    library_type: series
-    watch_depth: 1
-    output_prefix: /115/剧集
-    scan_path: /mnt/115/剧集
-```
+## Credits and license
 
-#### 4. Render and Apply Configuration
-
-```bash
-# Render runtime configuration
-python3 scripts/render_runtime.py
-
-# Apply configuration
-python3 scripts/apply_runtime.py
-```
-
-#### 5. Start Services
-
-```bash
-# Start nginx and emby2alist via Docker
-docker-compose up -d
-
-# Start admin API
-systemctl enable xstrm-admin-api
-systemctl start xstrm-admin-api
-```
-
-### Docker Installation
-
-The easiest way to run the entire stack:
-
-```bash
-# Using docker-compose
-docker-compose up -d
-```
-
-## Usage
-
-### Command Line Interface
-
-```bash
-# Run xstrm CLI
-xstrm
-
-# Or directly
-/opt/xstrm-suite/bin/xstrm
-```
-
-Options:
-- `1` - Scan from configured AList directories
-- `2` - Scan specified AList directory
-- `3` - View integration config
-- `4` - View current config
-- `5` - View state file
-- `0` - Exit
-
-> Scheduled scanning is temporarily unavailable while its trigger strategy, resource limits, overlap prevention, and failure recovery are redesigned. Daemon mode, the systemd timer, and installer integration have been removed; start scans manually from the CLI or web admin interface.
-
-### Web Admin Interface
-
-Access the admin UI at: `http://YOUR_SERVER:8095/admin/xstrm/`
-
-Features:
-- View scan status and logs
-- Browse AList directories
-- Trigger scans on specific directories
-- View configuration
-
-### API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/admin/xstrm/status` | GET | Get scan status |
-| `/api/admin/xstrm/sources` | GET | List configured sources |
-| `/api/admin/xstrm/scan-path` | POST | Scan specified path |
-| `/api/admin/xstrm/scan-all` | POST | Scan all sources |
-| `/api/admin/xstrm/alist/list` | GET | Browse AList directory |
-| `/api/admin/xstrm/logs` | GET | Get scan logs |
-
-## Scanning Workflow
-
-### How It Works
-
-1. **Configuration**: Define your media sources in `config/strm-sync.yaml`
-2. **AList Scanning**: The scanner connects to AList API and recursively walks directories
-3. **Path Mapping**: AList mount paths (e.g., `/mnt/115/电影`) are mapped to logical paths (e.g., `/115/电影`)
-4. **STRM Generation**: For each media file found, a `.strm` file is created in the output directory
-5. **State Tracking**: Generated files are tracked in state to avoid duplicates
-
-### Path Mapping Example
-
-```
-AList Path:    /mnt/115/电影/角斗士2 Gladiator II/GladiatorII.mkv
-               ↓ (path mapping)
-Logical Path:  /115/电影/角斗士2 Gladiator II/GladiatorII.mkv
-               ↓ (STRM generation)
-STRM File:     /emby-strm/115/电影/角斗士2 Gladiator II/GladiatorII.strm
-               ↓ (content)
-STRM Content:  /115/电影/角斗士2 Gladiator II/GladiatorII.mkv
-```
-
-## Queue-Based Incremental Refresh
-
-For daily updates, `scripts/incremental_strm_refresh.py` polls watch roots, active directories, and a small cold-directory sample. It only descends into new or changed child directories; manually queued show folders still recurse through season folders.
-
-This is useful when:
-
-- new episodes are added to an existing show directory;
-- a newly pinned directory should be processed first;
-- Emby deletes a local `.strm` file and it should be regenerated only if the remote media still exists;
-- AList requests need rate limits and jitter to reduce cloud-drive account risk.
-
-Quick setup:
-
-```bash
-cp config/strm-sync.yaml.example config/strm-sync.yaml
-vim config/strm-sync.yaml
-python3 scripts/incremental_strm_refresh.py --config config/strm-sync.yaml run-once
-```
-
-Queue a specific directory:
-
-```bash
-python3 scripts/incremental_strm_refresh.py \
-  --config config/strm-sync.yaml \
-  queue-dir "/mnt/cloud/series/Example Show" \
-  --reason manual
-```
-
-See [Incremental STRM Refresh](./docs/INCREMENTAL_STRM_REFRESH.md) for configuration details, path mapping, and a systemd timer example.
-
-Use `ignore-path` before deleting an unwanted Emby version permanently. Ignored paths are not regenerated; `unignore-path` removes the rule and queues the parent directory. Remote removals are tracked separately and can be kept, quarantined, or deleted after a grace period.
-
-### Supported Media Extensions
-
-By default, the scanner supports a broad set of common video and audio extensions.
-You can customize them through `scan.include_ext` in `config/strm-sync.yaml`.
-
-Typical supported formats include:
-- Video: `.mp4`, `.mkv`, `.avi`, `.ts`, `.m2ts`, `.mov`, `.wmv`, `.flv`, `.webm`, `.m4v`, `.mpg`, `.mpeg`, `.rmvb`, `.iso`
-- Audio: `.mp3`, `.m4a`, `.flac`, `.aac`, `.ape`, `.wav`, `.ogg`, `.opus`, `.wma`, `.alac`, `.aiff`, `.aif`, `.amr`
-
-### Incremental Mode
-
-By default, incremental mode is enabled:
-- Existing STRM files are skipped
-- Only new media files trigger STRM generation
-- Missing STRM files are automatically regenerated
-
-To disable incremental mode:
-
-```yaml
-scan:
-  incremental_only: false
-```
-
-## Troubleshooting
-
-### Check Service Status
-
-```bash
-# Check xstrm-admin API
-systemctl status xstrm-admin-api
-
-# Check Docker containers
-docker-compose ps
-
-# Check nginx
-nginx -t
-```
-
-### View Logs
-
-```bash
-# Admin API logs
-journalctl -u xstrm-admin-api -f
-
-# Scan logs
-tail -f /opt/xstrm-suite/data/tasks/logs/scan_path-*.log
-```
-
-### Common Issues
-
-1. **Token Invalid**: Update your AList token in `config/strm-sync.yaml`
-2. **Path Not Found**: Ensure AList storage paths match your configuration
-3. **Permission Denied**: Ensure the output directory is writable
-
-## Development
-
-### Project Structure
-
-```
-src/
-├── config.py       # Configuration loading and inference
-├── state.py        # State file management
-├── alist_client.py # AList API client
-├── scanner.py      # Media scanning logic
-└── generator.py    # STRM file generation
-```
-
-### Running Tests
-
-```bash
-# Test scanning
-python3 -m cmd.cli --scan-path "/mnt/115/电影"
-
-# View configuration
-python3 -m cmd.cli --config
-```
-
-## Acknowledgments
-
-This project is based on and extends the [emby2alist](https://github.com/bpking1/embyExternalUrl/tree/emby2alist) branch of [embyExternalUrl](https://github.com/bpking1/embyExternalUrl) by [bpking1](https://github.com/bpking1).
-
-## License
-
-MIT License
-
-## Support
-
-For issues and questions, please open an issue on GitHub.
+Playback integration builds on [embyExternalUrl](https://github.com/bpking1/embyExternalUrl). Scheduling references [AutoFilm](https://github.com/AkimioJR/AutoFilm); [MediaWarp](https://github.com/AkimioJR/MediaWarp) is an optional external backend. See [LICENSE](LICENSE) and upstream licenses.

@@ -1,0 +1,51 @@
+# HTTPS/admin edge only. Playback is handled by MediaWarp, with no njs routes.
+map $http_upgrade $xstrm_upgrade {
+    default upgrade;
+    '' close;
+}
+map $args $xstrm_query_token {
+    default '';
+    ~*(?:^|&)(?:api_key|x-emby-token|access_token)=([^&]+) $1;
+}
+map $http_x_emby_token $xstrm_client_token {
+    default $http_x_emby_token;
+    '' $xstrm_query_token;
+}
+# Do not record query strings, download signatures, or authorization headers.
+log_format xstrm_mediawarp '$remote_addr [$time_local] "$request_method $uri" $status $body_bytes_sent';
+server {
+    listen 8091;
+    include /etc/nginx/conf.d/includes/https.conf;
+    resolver 127.0.0.11 ipv6=off valid=30s;
+    set $xstrm_emby @@EMBY_URL@@;
+    set $xstrm_mediawarp http://mediawarp:9000;
+    access_log /var/log/nginx/access.log xstrm_mediawarp;
+    server_tokens off;
+    client_max_body_size 20m;
+    add_header Referrer-Policy no-referrer always;
+    add_header X-Xstrm-Playback-Backend mediawarp always;
+
+    include /etc/nginx/conf.d/custome/location/xstrm-admin.conf;
+    include /etc/nginx/conf.d/custome/location/xstrm-download.conf;
+
+    # MediaWarp resolves streams using its server credential. Authenticate the
+    # client session with Emby before allowing a playback redirect.
+    location = /_xstrm_mediawarp_auth {
+        internal;
+        proxy_pass $xstrm_emby/System/Info;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length '';
+        proxy_set_header X-Emby-Token $xstrm_session_token;
+    }
+
+    location ~* ^/(emby/)?videos/[0-9]+/(stream|original)(\.[a-z0-9]+)?$ {
+        # Capture the parent query before auth_request clears subrequest args.
+        set $xstrm_session_token $xstrm_client_token;
+        auth_request /_xstrm_mediawarp_auth;
+        include /etc/nginx/conf.d/includes/mediawarp-proxy.conf;
+    }
+
+    location / {
+        include /etc/nginx/conf.d/includes/mediawarp-proxy.conf;
+    }
+}

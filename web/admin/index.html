@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>xstrm 管理中心</title>
   <style>
+    .identity-dialog { width:min(880px,calc(100vw - 28px)); max-width:calc(100vw - 28px); max-height:88vh; margin:auto; padding:20px; overflow:auto; color:var(--text); background:var(--surface); }
+    .identity-dialog::backdrop { background:rgba(0,0,0,.68); }
+    .identity-poster { flex:0 0 88px; width:88px; min-height:132px; border-radius:5px; background:var(--surface-2); display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:12px; text-align:center; overflow:hidden; }
+    .identity-poster img { width:88px; max-height:132px; object-fit:cover; }
+    .identity-poster p { padding:6px; }
+    .identity-poster button { padding:6px; font-size:12px; min-height:32px; }
+
     :root {
       color-scheme: dark;
       --bg: #111312; --surface: #191c1a; --surface-2: #202421; --line: #343a36;
@@ -65,6 +72,23 @@
     .source-row { background:#151815; border:1px solid var(--line); padding:12px; border-radius:6px; margin-top:10px; }
     .source-fields { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
     .danger-zone { margin-top:18px; padding-top:14px; border-top:1px solid #4b3030; }
+    [hidden] { display:none!important; }
+    .health-result { margin:14px 0; }
+    .health-notice { display:flex; align-items:flex-start; gap:12px; padding:16px; border:1px solid var(--line); border-radius:7px; background:var(--surface-2); }
+    .health-icon { flex:0 0 30px; height:30px; display:grid; place-items:center; border:1px solid currentColor; border-radius:50%; font-weight:700; }
+    .health-notice h3 { font-size:16px; }
+    .health-notice p { margin-top:4px; }
+    .health-meta { display:flex; flex-wrap:wrap; gap:6px 20px; margin:12px 0 16px; }
+    .health-list { display:grid; gap:10px; }
+    .health-item { min-width:0; border:1px solid var(--line); border-radius:7px; padding:15px 16px; }
+    .health-item-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+    .health-item h3 { overflow-wrap:anywhere; }
+    .health-badge { flex-shrink:0; font-size:12px; padding:3px 8px; border:1px solid currentColor; border-radius:5px; }
+    .health-checks { display:flex; flex-wrap:wrap; gap:6px 18px; margin-top:10px; font-size:13px; }
+    .health-advice { color:var(--muted); font-size:13px; margin-top:8px; }
+    .health-details { margin-top:16px; border-top:1px solid var(--line); padding-top:12px; }
+    .health-details summary { color:var(--muted); cursor:pointer; font-size:13px; padding:4px 0; }
+    .health-details summary:focus-visible { outline:2px solid var(--blue); outline-offset:3px; }
     @media (max-width: 700px) {
       .wrap { padding:20px 14px 36px; }
       h1 { font-size:20px; }
@@ -99,6 +123,8 @@
     <nav class="section-nav" aria-label="管理区域">
       <button class="secondary active" data-section="overview">概览</button>
       <button class="secondary" data-section="tasks">扫描任务</button>
+      <button class="secondary" data-section="schedules">定时任务</button>
+      <button class="secondary" data-section="identity">媒体识别</button>
       <button class="secondary" data-section="sources">媒体源</button>
       <button class="secondary" data-section="settings">设置</button>
     </nav>
@@ -177,10 +203,95 @@
     </div>
     </section>
 
+    <section class="page-section" data-panel="schedules">
+      <div class="card">
+        <div class="toolbar"><h2>自动扫描计划</h2><button id="scheduleRefresh" class="secondary">刷新状态</button></div>
+        <p class="muted">每个任务选择一个已保存的同步源。手动和定时扫描按顺序执行；重复触发同一任务只保留一份。停用计划不会中断正在执行的扫描。</p>
+        <p id="schedulerState" class="muted" role="status">正在读取调度状态…</p>
+        <div id="scheduleList"></div>
+      </div>
+      <div class="card">
+        <h2 id="scheduleFormTitle">添加定时任务</h2>
+        <p class="muted">所有时间均为北京时间。保存后自动生效，首次按下一次计划执行；“立即运行”可用于验证。</p>
+        <form id="scheduleForm" class="schedule-form" style="margin-top:14px">
+          <input name="id" type="hidden">
+          <div class="source-fields">
+            <label>任务名称<input name="name" maxlength="100" required placeholder="例如：115 电影自动更新"></label>
+            <label>同步源<select name="source_key" required></select></label>
+            <label>执行方式<select name="trigger" id="scheduleTrigger"><option value="interval">按间隔执行</option><option value="daily">每天固定时间</option><option value="cron">自定义 Cron</option></select></label>
+            <label id="scheduleInterval">间隔（分钟）<input name="interval_minutes" type="number" min="1" max="43200" value="360" required></label>
+            <label id="scheduleDaily" hidden>每天执行时间<input name="daily_time" type="time" value="03:00" required></label>
+            <label id="scheduleCron" hidden>Cron 表达式<input name="cron" value="0 */6 * * *" required><span class="muted">支持 5 段；6 段时秒在首位且须为固定值。最快每分钟一次，星期建议用 mon…sun。</span></label>
+            <label>扫描范围<select name="mode" id="scheduleMode"><option value="new">最近新增或修改</option><option value="all">全部文件（跳过已有索引）</option></select></label>
+            <label id="scheduleRecent">回看最近多少小时<input name="recent_hours" type="number" min="1" max="720" value="24" required></label>
+          </div>
+          <div class="actions" style="margin-top:14px;gap:16px"><label><input name="enabled" type="checkbox" checked style="width:auto;min-height:auto"> 启用自动执行</label><label><input name="refresh_emby" type="checkbox" checked style="width:auto;min-height:auto"> 扫描成功后通知 Emby 刷新媒体库</label></div>
+          <details class="health-details"><summary>失败重试与执行时限</summary><div class="source-fields" style="margin-top:10px"><label>失败后最多重试几次<input name="max_retries" type="number" min="0" max="3" value="1" required></label><label>重试间隔（分钟）<input name="retry_delay_minutes" type="number" min="1" max="120" value="5" required></label><label>单次执行时限（分钟）<input name="timeout_minutes" type="number" min="1" max="1440" value="120" required></label></div></details>
+          <div class="actions" style="margin-top:14px"><button type="submit">保存定时任务</button><button id="scheduleReset" type="button" class="secondary">取消编辑 / 新建</button></div>
+          <p id="scheduleFormMessage" class="muted" role="status"></p>
+        </form>
+      </div>
+      <div class="card"><h2>最近执行记录</h2><p class="muted">显示定时触发、立即运行和手动扫描的结果。扫描中断、重试等待与取消都会保留记录。</p><div id="scheduleHistory"></div></div>
+    </section>
+
+    <section class="page-section" data-panel="identity">
+      <div class="card">
+        <div class="toolbar"><h2>影片识别修复</h2><button id="identityRefresh" class="secondary">刷新影片列表</button></div>
+        <p class="muted">列表显示待处理的原始条目；点击“搜索影片及海报”后，在弹窗中查看候选海报并确认。第一版支持电影 STRM；识别错误的影片可在“全部影片”中纠正。</p>
+        <div id="identityCounts" class="grid" style="margin-top:12px"></div>
+        <div class="source-fields" style="margin-top:14px"><label>查看范围<select id="identityScope"><option value="unmatched">未识别影片</option><option value="incomplete">缺少海报或简介</option><option value="all">全部影片（含识别错误）</option></select></label><label>筛选影片<input id="identityFilter" type="search" placeholder="片名、原路径或 Emby 条目编号"></label></div>
+        <p id="identityMessage" role="status" class="muted">点击“刷新影片列表”读取 Emby。</p>
+        <div id="identityItems"></div>
+      </div>
+      <dialog class="card identity-dialog" id="identityEditor" aria-labelledby="identityTitle">
+        <div class="toolbar"><p class="muted">选择并确认正确影片</p><button id="identityClose" class="secondary" type="button">关闭</button></div>
+        <h2 id="identityTitle">选择正确影片</h2>
+        <p id="identityPath" class="muted" style="overflow-wrap:anywhere"></p>
+        <p id="identityWarnings" class="bad"></p>
+        <form id="identitySearchForm" style="margin-top:14px">
+          <div class="source-fields"><label>搜索片名<input id="identityQuery" maxlength="200" placeholder="支持中文或英文片名"></label><label>发行年份<input id="identityYear" type="number" min="1900" max="2099" placeholder="不确定可留空"></label><label>TMDB ID<input id="identityTmdb" inputmode="numeric" pattern="[1-9][0-9]*" placeholder="填写后按 ID 精确查询"></label></div>
+          <div id="identityAlternatives" class="actions" style="margin-top:10px"></div>
+          <label style="display:block;margin-top:12px"><input id="identityReplaceImages" type="checkbox" style="width:auto;min-height:auto"> 确认匹配时同时替换已有图片（用于海报也认错的影片）</label>
+          <div class="actions" style="margin-top:14px"><button id="identitySearch" type="submit">搜索候选</button><button id="identityRestore" class="secondary" type="button" hidden>使用已确认的绑定搜索</button></div>
+        </form>
+        <p id="identitySearchMessage" class="muted" role="status"></p>
+        <div id="identityCandidates"></div>
+      </dialog>
+      <div class="card"><div class="toolbar"><h2>识别处理记录</h2><button id="identityHistoryRefresh" class="secondary">刷新记录</button></div><p class="muted">身份绑定、元数据刷新和最终核对分别记录。绑定按原路径及 STRM 内容保存；重建后可选中影片，使用已确认的绑定重新搜索并恢复。</p><div id="identityHistory"></div></div>
+    </section>
+
     <section class="page-section" data-panel="settings">
     <div class="card">
+      <h2>连接与播放配置</h2>
+      <p class="muted">密钥留空保持原值。同步设置下次任务生效；选择和保存播放后端后，仍需在测试机执行部署应用步骤。</p>
+      <form id="controlForm" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
+        <label>播放后端<select name="backend" id="playbackBackend"><option value="emby2alist">emby2Alist</option><option value="mediawarp">MediaWarp</option></select></label>
+        <label>AList / OpenList 地址<input name="alist_url" type="url" required placeholder="http://openlist:5244"></label>
+        <label>AList 公网地址<input name="alist_public_url" type="url" placeholder="https://files.example.com"></label>
+        <label>AList Token<input name="alist_token" type="password" autocomplete="new-password" placeholder="留空保持原值"></label>
+        <label><input name="alist_sign_enable" type="checkbox"> AList 下载链接签名（密钥需使用后台长期令牌）</label>
+        <label>下载签名有效期（小时）<input name="alist_sign_expire_hours" type="number" min="1" max="168" required value="12"></label>
+        <label>Emby 地址<input name="emby_url" type="url" required placeholder="http://emby:8096"></label>
+        <label>Emby API Key<input name="emby_key" type="password" autocomplete="new-password" placeholder="留空保持原值"></label>
+        <label>STRM 输出根目录<input name="output_root" required placeholder="/emby-strm"></label>
+        <label><input name="subtitle_sync" type="checkbox"> 同步外挂字幕</label>
+        <label><input name="fallback_to_emby" type="checkbox"> 解析失败交由 Emby 处理（需要 Emby 可读取源）</label>
+        <label><input name="check_redirect" type="checkbox"> 返回直链前检查有效性</label>
+        <label><input name="client_self_alist_115" type="checkbox"> 115 由客户端向 AList 获取链接（需可访问公网地址）</label>
+        <div class="actions" style="grid-column:1/-1">
+          <button type="submit">保存连接与播放配置</button>
+          <button type="button" id="controlReload" class="secondary">重新读取</button>
+          <button type="button" id="controlTest" class="secondary">测试已保存的连接</button>
+          <button type="button" id="controlPreview" class="secondary">预览播放配置</button>
+        </div>
+      </form>
+      <p id="backendHelp" class="muted"></p>
+      <p id="controlState" class="muted">正在读取配置…</p>
+      <pre id="controlResult" style="max-height:300px;overflow:auto"></pre>
+    </div>
+    <div class="card">
       <h2>生成配置</h2>
-      <p class="muted">xstrm 只作为独立的 strm 生成工具存在。这里配置它读取哪套 nginx 参数，以及 strm 文件写成什么格式。</p>
+      <p class="muted">当前生成器使用 AList 逻辑路径。这里保留历史路径配置用于迁移；连接、字幕和播放策略在上方统一管理。</p>
       <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-bottom:12px;">
         <div>
           <label class="muted">nginx 配置根目录</label>
@@ -189,9 +300,9 @@
         <div>
           <label class="muted">strm 输出模式</label>
           <select id="strmModeSelect">
-            <option value="auto">auto（按 nginx 配置自动推导）</option>
+
             <option value="logical_path">logical_path（如 /115/电影/...）</option>
-            <option value="local_path">local_path（如 /mnt/115/电影/...）</option>
+
           </select>
         </div>
         <div>
@@ -243,8 +354,13 @@
           <button id="strmHealthBtn" class="secondary">执行健康扫描</button>
         </div>
       </div>
-      <div id="strmHealthSummary" class="grid" style="margin-bottom:12px;"></div>
-      <pre id="strmHealthBox">点击“执行健康扫描”开始。</pre>
+      <p class="muted">检查影片索引文件是否存在、播放入口能否正常跳转。检查不会下载影片或重新刮削。</p>
+      <div id="strmHealthSummary" class="grid" style="margin-top:14px;" hidden></div>
+      <div id="strmHealthBox" class="health-result" role="status" aria-live="polite"><p class="muted">点击“执行健康扫描”，查看每部影片的检查结果。</p></div>
+      <details id="strmHealthDetails" class="health-details" hidden>
+        <summary>技术详情（用于排查问题）</summary>
+        <pre id="strmHealthRaw"></pre>
+      </details>
     </div>
     </section>
   </div>
@@ -290,6 +406,8 @@
     const strmHealthBtn = document.getElementById('strmHealthBtn');
     const strmHealthSummaryEl = document.getElementById('strmHealthSummary');
     const strmHealthBox = document.getElementById('strmHealthBox');
+    const strmHealthDetails = document.getElementById('strmHealthDetails');
+    const strmHealthRaw = document.getElementById('strmHealthRaw');
     let sourcesData = [];
 
     let refreshTimer = null;
@@ -316,7 +434,7 @@
 
     function renderStatus(data, incremental={}) {
       const s = data?.status || {};
-      const stateText = s.running ? '<span class="running">执行中</span>' : (s.success === false ? '<span class="bad">失败</span>' : '<span class="ok">空闲/成功</span>');
+      const stateText = s.running ? `<span class="running">${s.queue_state === 'queued' ? '等待执行' : s.queue_state === 'retry_wait' ? '等待重试' : '执行中'}</span>` : (s.success === false ? '<span class="bad">失败</span>' : '<span class="ok">空闲/成功</span>');
       statusEl.innerHTML = `
         <div class="kv"><strong>状态</strong>${stateText}</div>
         <div class="kv"><strong>任务</strong>${escapeHtml(s.task || '-')}</div>
@@ -353,6 +471,14 @@
         fetchJson('/api/admin/xstrm/status'),
         fetchJson('/api/admin/xstrm/incremental/status').catch(() => ({incremental:{}}))
       ]);
+      const pending = pendingTask;
+      if (pending?.runId) {
+        const own = await fetchJson('/api/admin/xstrm/task-run?id=' + encodeURIComponent(pending.runId));
+        if (own.run && pendingTask?.runId === pending.runId) {
+          const run = own.run;
+          data.status = {task:pending.label, running:['queued','running','retry_wait'].includes(run.state), success:run.state === 'succeeded' || run.state === 'warning', message:run.message, started_at:run.started || run.created, finished_at:run.finished, log_file:run.log_file, queue_state:run.state};
+        }
+      }
       renderStatus(data, incrementalData.incremental || {});
       handleTaskStatus(data?.status || {});
       return data;
@@ -406,21 +532,98 @@
       return data;
     }
 
+    function healthTime(value) {
+      const date = new Date(String(value || '').replace(/([+-]\d{2})(\d{2})$/, '$1:$2'));
+      if (Number.isNaN(date.getTime())) return '未提供';
+      return new Intl.DateTimeFormat('zh-CN', {timeZone:'Asia/Shanghai', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false}).format(date) + '（北京时间）';
+    }
+
+    function healthItem(item, state) {
+      const path = String(item.path || '').toLowerCase();
+      const source = path.includes('/115/') ? '115 网盘' : /\/(ali|aliyun)\//.test(path) ? '阿里云盘' : '其他媒体源';
+      const title = item.name || String(item.path || '').split(/[\\/]/).pop()?.replace(/\.strm$/i, '') || '未命名影片';
+      const good = state === 'healthy';
+      const missing = state === 'missing';
+      let reason = '未能取得正常的播放跳转。';
+      let advice = '检查网盘授权与播放服务连接后重试。';
+      if (missing) {
+        reason = '影片索引文件已丢失，媒体库中仍保留这条记录。';
+        advice = '重新扫描对应目录生成索引，然后刷新 Emby 媒体库。';
+      } else if (item.http_status === 401) {
+        reason = '播放入口未通过身份验证。';
+        advice = '到设置中检查 Emby API Key，并测试已保存的连接。';
+      } else if (item.http_status === 403) {
+        reason = '播放入口拒绝访问。';
+        advice = '检查 Emby 用户权限及网盘授权状态。';
+      } else if (item.http_status === 404) {
+        reason = '播放入口找不到对应影片。';
+        advice = '确认网盘文件仍然存在，再刷新 Emby 媒体库。';
+      } else if ([502, 503, 504].includes(item.http_status)) {
+        reason = '播放服务暂时无法响应。';
+        advice = '检查播放服务与 OpenList 的连接后重试。';
+      } else if (item.http_status === 200) {
+        reason = '播放入口有响应，但未返回直连跳转。';
+        advice = '检查播放后端配置及该影片的路径规则。';
+      } else if (item.test_status === 'invalid_redirect') {
+        reason = '播放入口返回的下载地址无效。';
+        advice = '检查 OpenList 公网地址和播放后端配置。';
+      } else if (item.test_status === 'error') {
+        reason = '网络请求失败或连接超时。';
+        advice = '稍后重试，并在设置中测试 Emby 和 OpenList 的连接。';
+      }
+      return `<article class="health-item">
+        <div class="health-item-head"><div><h3>${escapeHtml(title)}</h3><p class="muted">${source}</p></div><span class="health-badge ${good ? 'ok' : 'bad'}">${good ? '检查通过' : missing ? '索引缺失' : '需要处理'}</span></div>
+        ${good ? '<div class="health-checks ok"><span>✓ 影片索引文件存在</span><span>✓ 播放跳转正常</span></div>' : `<p>${escapeHtml(reason)}</p><p class="health-advice">建议：${escapeHtml(advice)}</p>`}
+      </article>`;
+    }
+
     function renderStrmHealth(report) {
+      const healthy = Array.isArray(report?.healthy) ? report.healthy : [];
+      const missing = Array.isArray(report?.missing) ? report.missing : [];
+      const failed = Array.isArray(report?.failed) ? report.failed : [];
+      const count = (value, fallback) => Number.isSafeInteger(Number(value)) && Number(value) >= 0 ? Number(value) : fallback;
+      const total = count(report?.total_strm_items, healthy.length + missing.length + failed.length);
+      const normal = count(report?.healthy_redirect, healthy.length);
+      const missingCount = count(report?.missing_file, missing.length);
+      const failedCount = count(report?.failed_non_redirect, failed.length);
+      const issues = missingCount + failedCount;
+      const allGood = total > 0 && normal === total && issues === 0;
+      const backend = ({mediawarp:'MediaWarp', emby2alist:'emby2Alist'})[healthy[0]?.gateway_backend || report?.configured_backend] || '未识别';
+      const title = !total ? '暂无可检查的影片' : issues ? `检查完成，${issues} 部影片需要处理` : allGood ? `${total} 部影片检查通过` : '检查完成，部分结果待确认';
+      const description = !total ? '请先生成影片索引，再让 Emby 扫描入库，然后重新检查。' : issues ? '请查看下方影片的具体原因和处理建议。' : allGood ? '影片索引文件存在，播放入口能够正常跳转。' : '部分影片尚未取得完整结果，请重新扫描。';
+      strmHealthSummaryEl.hidden = false;
       strmHealthSummaryEl.innerHTML = `
-        <div class="kv"><strong>STRM 总数</strong>${escapeHtml(report?.total_strm_items ?? 0)}</div>
-        <div class="kv"><strong>可重定向</strong><span class="ok">${escapeHtml(report?.healthy_redirect ?? 0)}</span></div>
-        <div class="kv"><strong>缺失文件</strong><span class="${(report?.missing_file || 0) ? 'bad' : 'ok'}">${escapeHtml(report?.missing_file ?? 0)}</span></div>
-        <div class="kv"><strong>失败项</strong><span class="${(report?.failed_non_redirect || 0) ? 'bad' : 'ok'}">${escapeHtml(report?.failed_non_redirect ?? 0)}</span></div>
+        <div class="kv"><strong>已检查影片</strong>${total} 部</div>
+        <div class="kv"><strong>检查正常</strong><span class="ok">${normal} 部</span></div>
+        <div class="kv"><strong>索引缺失</strong><span class="${missingCount ? 'bad' : 'ok'}">${missingCount} 部</span></div>
+        <div class="kv"><strong>跳转异常</strong><span class="${failedCount ? 'bad' : 'ok'}">${failedCount} 部</span></div>
       `;
-      strmHealthBox.textContent = JSON.stringify(report || {}, null, 2);
+      strmHealthBox.innerHTML = `
+        <div class="health-notice"><span class="health-icon ${allGood ? 'ok' : issues ? 'bad' : 'muted'}" aria-hidden="true">${allGood ? '✓' : issues ? '!' : '—'}</span><div><h3>${escapeHtml(title)}</h3><p class="muted">${escapeHtml(description)}</p></div></div>
+        <div class="health-meta muted"><span>检查时间：${escapeHtml(healthTime(report?.generated_at))}</span><span>播放后端：${escapeHtml(backend)}</span></div>
+        <div class="health-list">${missing.map(item => healthItem(item, 'missing')).join('')}${failed.map(item => healthItem(item, 'failed')).join('')}${healthy.map(item => healthItem(item, 'healthy')).join('')}</div>
+        ${total ? '<p class="health-advice">本次只检查索引和播放跳转；起播、拖动、字幕与音轨请在 VidHub 中实际验证。</p>' : ''}
+      `;
+      strmHealthDetails.hidden = false;
+      strmHealthDetails.open = false;
+      strmHealthRaw.textContent = JSON.stringify(report || {}, null, 2);
     }
 
     async function loadStrmHealth() {
-      strmHealthBox.textContent = '正在执行健康扫描...';
-      const data = await fetchJson('/api/admin/xstrm/strm-health');
-      renderStrmHealth(data.report || {});
-      return data;
+      strmHealthSummaryEl.hidden = true;
+      strmHealthDetails.hidden = true;
+      strmHealthBox.setAttribute('aria-busy', 'true');
+      strmHealthBox.innerHTML = '<div class="health-notice"><span class="health-icon running" aria-hidden="true">…</span><div><h3>正在检查影片</h3><p class="muted">正在确认索引文件和播放入口，请稍候。</p></div></div>';
+      try {
+        const data = await fetchJson('/api/admin/xstrm/strm-health');
+        renderStrmHealth(data.report || {});
+        return data;
+      } catch (error) {
+        strmHealthBox.innerHTML = `<div class="health-notice"><span class="health-icon bad" aria-hidden="true">!</span><div><h3>健康扫描未完成</h3><p>${escapeHtml(error.message)}</p><p class="health-advice">请先在设置中测试 Emby 连接，再重新扫描。</p></div></div>`;
+        throw error;
+      } finally {
+        strmHealthBox.removeAttribute('aria-busy');
+      }
     }
 
     function renderSettingsSummary(s, profile, profileError) {
@@ -442,7 +645,7 @@
       const data = await fetchJson('/api/admin/xstrm/settings');
       const s = data.settings || {};
       profileRootInput.value = s.profile_root || '/opt/xstrm-suite/nginx';
-      strmModeSelect.value = s.strm_mode || 'auto';
+      strmModeSelect.value = 'logical_path';
       outputRootInput.value = s.output_root || '/emby-strm';
       renderSettingsSummary(s, data.profile, data.profile_error || null);
       settingsBox.textContent = JSON.stringify({
@@ -629,6 +832,66 @@
       renderPathHistory();
     }
 
+    const controlForm = document.getElementById('controlForm');
+    const controlState = document.getElementById('controlState');
+    const controlResult = document.getElementById('controlResult');
+    let controlRevision = null;
+    function updateBackendOptions() {
+      const mediawarp = document.getElementById('playbackBackend').value === 'mediawarp';
+      for (const field of controlForm.elements) {
+        if (['alist_sign_enable', 'alist_sign_expire_hours', 'fallback_to_emby', 'check_redirect', 'client_self_alist_115'].includes(field.name)) field.disabled = mediawarp;
+      }
+      document.getElementById('backendHelp').textContent = mediawarp
+        ? 'MediaWarp 使用 OpenList 返回的签名下载入口，115 与阿里均通过公网 /d/ 地址跳转；上方灰色选项仅适用于 emby2Alist。当前 STRM 使用逻辑路径，无原视频挂载时不提供转码。保存后需执行 bash deploy/apply_playback.sh mediawarp 才会切换。'
+        : 'emby2Alist 使用上方取链、签名和回源策略。保存后需执行 bash deploy/apply_playback.sh emby2alist 才会切换。';
+    }
+    document.getElementById('playbackBackend').onchange = updateBackendOptions;
+    function fillControl(c) {
+      controlRevision = c.revision;
+      for (const field of controlForm.elements) {
+        if (!field.name) continue;
+        if (field.type === 'password') { field.value = ''; continue; }
+        if (field.type === 'checkbox') field.checked = Boolean(c[field.name]);
+        else field.value = c[field.name] || '';
+      }
+      controlState.textContent = `AList 密钥${c.alist_token_set ? '已设置' : '未设置'}；Emby 密钥${c.emby_key_set ? '已设置' : '未设置'}。${c.deployment}`;
+      updateBackendOptions();
+    }
+    async function loadControl() {
+      const response = await fetchJson('/api/admin/xstrm/control');
+      fillControl(response.config);
+    }
+    async function submitControl(preview) {
+      if (!controlRevision || !controlForm.reportValidity()) return;
+      const body = {revision: controlRevision};
+      for (const field of controlForm.elements) {
+        if (field.name && !field.disabled) body[field.name] = field.type === 'checkbox' ? field.checked : field.type === 'number' ? Number(field.value) : field.value.trim();
+      }
+      const buttons = controlForm.querySelectorAll('button');
+      buttons.forEach(b => b.disabled = true);
+      try {
+        const response = await fetchJson('/api/admin/xstrm/control' + (preview ? '/preview' : ''), {
+          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+        });
+        if (preview) controlResult.textContent = JSON.stringify(response.preview, null, 2);
+        else {
+          fillControl(response.config);
+          controlResult.textContent = response.message;
+          await loadSettings();
+        }
+      } catch (error) { showToast(error.message, 'bad'); }
+      finally { buttons.forEach(b => b.disabled = false); }
+    }
+    controlForm.onsubmit = event => { event.preventDefault(); submitControl(false); };
+    document.getElementById('controlReload').onclick = () => loadControl().catch(e => showToast(e.message, 'bad'));
+    document.getElementById('controlTest').onclick = async () => {
+      controlResult.textContent = '正在测试连接…';
+      try { const response = await fetchJson('/api/admin/xstrm/control/test', {method: 'POST'}); controlResult.textContent = JSON.stringify(response.connections, null, 2); }
+      catch (e) { controlResult.textContent = e.message; }
+    };
+    document.getElementById('controlPreview').onclick = () => submitControl(true);
+    loadControl().catch(e => { controlState.textContent = '配置读取失败：' + e.message; });
+
     function renderPathHistory() {
       const list = getPathHistory();
       pathHistoryEl.innerHTML = '';
@@ -668,7 +931,7 @@
         const text = (data.stdout || data.stderr || successLabel).trim();
         showToast(text || successLabel, 'ok');
         if (taskLabel) {
-          pendingTask = {label: taskLabel, submittedAt: Date.now(), seenRunning: false};
+          pendingTask = {label: taskLabel, submittedAt: Date.now(), seenRunning: false, runId:data.run_id};
           scheduleTaskPolling();
         }
         if (body?.path) savePathHistory(body.path);
@@ -707,8 +970,9 @@
     strmHealthBtn.onclick = async () => {
       setButtonsDisabled(true);
       try {
-        await loadStrmHealth();
-        showToast('STRM 健康扫描完成');
+        const data = await loadStrmHealth();
+        const issues = Number(data.report?.missing_file || 0) + Number(data.report?.failed_non_redirect || 0);
+        showToast(issues ? `检查完成，${issues} 部影片需要处理` : 'STRM 健康扫描完成', issues ? 'bad' : 'ok');
       } catch (e) {
         showToast('STRM 健康扫描失败：' + e.message, 'bad');
       } finally {
@@ -764,6 +1028,89 @@
 
     autoRefreshSelect.onchange = () => setAutoRefresh(Number(autoRefreshSelect.value));
 
+    const scheduleForm = document.getElementById('scheduleForm');
+    let scheduleData = null;
+    let scheduleFormRevision = null;
+    const scheduleField = name => scheduleForm.elements.namedItem(name);
+    const runStateName = {queued:'等待执行',running:'正在扫描',retry_wait:'等待重试',succeeded:'执行成功',warning:'完成，需留意',failed:'执行失败',interrupted:'执行中断',cancelled:'已取消'};
+    function updateScheduleFields() {
+      const trigger = scheduleField('trigger').value;
+      for (const [kind, id, name] of [['interval','scheduleInterval','interval_minutes'],['daily','scheduleDaily','daily_time'],['cron','scheduleCron','cron']]) {
+        document.getElementById(id).hidden = trigger !== kind;
+        scheduleField(name).disabled = trigger !== kind;
+      }
+      document.getElementById('scheduleRecent').hidden = scheduleField('mode').value !== 'new';
+      scheduleField('recent_hours').disabled = scheduleField('mode').value !== 'new';
+    }
+    function resetSchedule(job=null) {
+      if (!scheduleData) return;
+      scheduleForm.reset();
+      scheduleField('source_key').innerHTML = scheduleData.sources.map(source => `<option value="${escapeHtml(source.key)}">${escapeHtml(source.path)}</option>`).join('');
+      for (const field of scheduleForm.elements) {
+        if (!field.name || !job || job[field.name] === undefined) continue;
+        if (field.type === 'checkbox') field.checked = Boolean(job[field.name]);
+        else field.value = job[field.name];
+      }
+      scheduleFormRevision = scheduleData.revision;
+      document.getElementById('scheduleFormTitle').textContent = job ? '编辑定时任务' : '添加定时任务';
+      document.getElementById('scheduleFormMessage').textContent = scheduleData.sources.length ? '' : '请先到媒体源中添加并保存同步源。';
+      updateScheduleFields();
+    }
+    function scheduleDescription(job) {
+      const when = job.trigger === 'daily' ? `每天 ${job.daily_time}` : job.trigger === 'cron' ? `按 Cron ${job.cron}` : job.interval_minutes % 60 === 0 ? `每 ${job.interval_minutes / 60} 小时` : `每 ${job.interval_minutes} 分钟`;
+      return `${when} · ${job.mode === 'all' ? '全部文件' : `最近 ${job.recent_hours} 小时新增或修改`}`;
+    }
+    async function loadSchedules() {
+      const data = await fetchJson('/api/admin/xstrm/scheduler');
+      const firstLoad = !scheduleData;
+      scheduleData = data;
+      document.getElementById('schedulerState').textContent = `${data.running ? '调度服务运行中' : '调度服务未运行'} · 北京时间 · 等待执行 ${data.queued || 0} 项${data.error ? ' · ' + data.error : ''}`;
+      document.getElementById('scheduleList').innerHTML = data.jobs.length ? data.jobs.map(job => `<article class="source-row"><div class="toolbar"><h3>${escapeHtml(job.name)}</h3><span class="health-badge ${job.enabled && !job.source_missing ? 'ok' : 'muted'}">${job.source_missing ? '同步源已变更' : job.enabled ? '已启用' : '已停用'}</span></div><p>${escapeHtml(scheduleDescription(job))}</p><p class="muted">同步源：${escapeHtml(job.source_path || '请重新选择同步源')}</p><p class="muted">下次执行：${job.enabled && job.next_run && !job.source_missing ? escapeHtml(healthTime(job.next_run)) : '暂无自动执行计划'}</p><p class="muted">最近结果：${job.last_run ? escapeHtml(runStateName[job.last_run.state] || '未知') + ' · ' + escapeHtml(job.last_run.message || '') : '尚未执行'}</p><div class="actions" style="margin-top:10px"><button class="secondary" data-plan-run="${escapeHtml(job.id)}" ${job.source_missing ? 'disabled' : ''}>立即运行</button><button class="secondary" data-plan-edit="${escapeHtml(job.id)}">编辑</button><button class="secondary" data-plan-toggle="${escapeHtml(job.id)}" ${job.source_missing ? 'disabled' : ''}>${job.enabled ? '停用' : '启用'}</button><button class="danger" data-plan-delete="${escapeHtml(job.id)}">删除计划</button></div></article>`).join('') : '<p class="muted">尚未添加定时任务。可在下方创建，每个任务绑定一个同步源。</p>';
+      document.getElementById('scheduleHistory').innerHTML = data.history.length ? data.history.map(run => `<article class="source-row"><div class="toolbar"><h3>${escapeHtml(run.name)}</h3><span class="${run.state === 'succeeded' ? 'ok' : ['failed','interrupted'].includes(run.state) ? 'bad' : 'muted'}">${escapeHtml(runStateName[run.state] || '未知')}</span></div><p>${escapeHtml(run.message || '')}</p><p class="muted">${run.origin === 'schedule' ? '定时触发' : '手动触发'} · ${escapeHtml(healthTime(run.started || run.created))} · 已尝试 ${run.attempt} 次${run.state === 'retry_wait' ? ' · 重试时间：' + escapeHtml(healthTime(run.next_attempt)) : ''}</p></article>`).join('') : '<p class="muted">尚无执行记录。</p>';
+      if (firstLoad) resetSchedule();
+      return data;
+    }
+    async function scheduleAction(action, payload) {
+      const result = await fetchJson('/api/admin/xstrm/scheduler/' + action, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      await loadSchedules();
+      return result;
+    }
+    scheduleForm.onsubmit = async event => {
+      event.preventDefault();
+      if (!scheduleForm.reportValidity()) return;
+      const job = {timezone:'Asia/Shanghai'};
+      for (const field of scheduleForm.elements) {
+        if (!field.name || field.disabled) continue;
+        job[field.name] = field.type === 'checkbox' ? field.checked : field.type === 'number' ? Number(field.value) : field.value.trim();
+      }
+      try {
+        await scheduleAction('save', {revision:scheduleFormRevision,job});
+        resetSchedule();
+        showToast('定时任务已保存，下一次执行时间已更新');
+      } catch (error) { document.getElementById('scheduleFormMessage').textContent = error.message; showToast(error.message, 'bad'); }
+    };
+    document.getElementById('scheduleList').onclick = async event => {
+      const button = event.target.closest('button');
+      if (!button || button.disabled || !scheduleData) return;
+      const id = button.dataset.planRun || button.dataset.planEdit || button.dataset.planToggle || button.dataset.planDelete;
+      const job = scheduleData.jobs.find(item => item.id === id);
+      if (!job) return;
+      if (button.dataset.planEdit) return resetSchedule(job);
+      button.disabled = true;
+      try {
+        if (button.dataset.planRun) { await scheduleAction('run', {id}); showToast('任务已加入队列，可在最近执行记录查看进度'); }
+        else if (button.dataset.planToggle) { await scheduleAction('save', {revision:scheduleData.revision,job:{...job,enabled:!job.enabled}}); showToast(job.enabled ? '计划已停用' : '计划已启用'); }
+        else if (window.confirm('删除这条定时计划？影片和已生成的 STRM 会保留。')) { await scheduleAction('delete', {id,revision:scheduleData.revision}); showToast('定时计划已删除'); }
+      } catch (error) { showToast(error.message,'bad'); await loadSchedules().catch(() => {}); }
+      finally { button.disabled = false; }
+    };
+    document.getElementById('scheduleTrigger').onchange = updateScheduleFields;
+    document.getElementById('scheduleMode').onchange = updateScheduleFields;
+    document.getElementById('scheduleReset').onclick = () => resetSchedule();
+    document.getElementById('scheduleRefresh').onclick = () => loadSchedules().catch(error => showToast(error.message,'bad'));
+    setInterval(() => { if (document.querySelector('[data-panel="schedules"]').classList.contains('active')) loadSchedules().catch(() => {}); }, 5000);
+    loadSchedules().catch(error => { document.getElementById('schedulerState').textContent = error.message; });
+
     document.querySelectorAll('[data-section]').forEach(btn => {
       btn.onclick = () => {
         document.querySelectorAll('[data-section]').forEach(x => x.classList.toggle('active', x === btn));
@@ -780,5 +1127,6 @@
       showToast('页面初始化失败：' + err.message, 'bad');
     });
   </script>
+  <script src="/api/admin/xstrm/identity/ui.js"></script>
 </body>
 </html>

@@ -1,386 +1,101 @@
 # xstrm-suite
 
-[English](./README.md) | [中文](./README.zh-CN.md)
+[English](README.md) | [中文](README.zh-CN.md)
 
-STRM 文件管理系统，用于 Emby + AList 集成。自动生成 `.strm` 文件指向 AList 托管的媒体文件，使 Emby 能够直接从 AList 存储播放媒体。
+面向网盘 Emby 媒体库的 Web 管理中心：从 AList/OpenList 生成本地 STRM、安排定时扫描、诊断跳转，并使用 Emby 自身接口修复电影识别。播放支持 MediaWarp 或原有 Nginx/njs/emby2Alist。
 
-> 本项目基于 [embyExternalUrl](https://github.com/bpking1/embyExternalUrl) 修改。
+## 工作结构
 
-## 项目目的
-
-xstrm-suite 旨在解决 Emby 配合网盘使用时遇到的常见问题：
-
-1. **规避风控风险**：避免 Emby 频繁刮削导致网盘账号被风控甚至封号
-2. **提升响应速度**：解决 Emby 刷新、识别、获取元数据缓慢的问题
-3. **配置灵活**：无需修改原有 Emby 和 AList 配置
-4. **自动获取**：通过 API 自动获取 Emby 及 AList 配置/路径，方便使用
-5. **统一端口**：与直连代理共用端口，插件形式存在，便于管理
-
-## 功能特性
-
-- **字幕同步**：全量和队列式增量扫描都会从多层 AList 目录下载缺失字幕，并写入对应的本地 STRM 目录树。
-- **Web 管理界面**：提供适配桌面和手机的运维面板，突出任务优先级与实时队列健康状态，并支持一键扫描、配置管理及按修改时间排序（从新到旧）的目录浏览。
-- **AList 集成**：直接集成 AList 进行媒体扫描
-- **自动 STRM 生成**：自动为媒体库生成 `.strm` 文件
-- **增量同步**：仅生成缺失的 STRM 文件，跳过已存在的
-- **队列式增量刷新**：优先处理新增、变化及从未扫描的多层目录，并按需补生成缺失的 `.strm` 和字幕文件
-- **状态管理**：跟踪已生成的文件以避免重复
-- **灵活扫描**：扫描所有来源或指定单独目录
-- **近 24 小时新增扫描**：Web 界面可遍历全部已配置媒体源，但只生成最近 24 小时创建或修改的项目；新目录内的视频即使保留旧时间也会被纳入。
-- **扩展媒体格式支持**：支持常见视频和音频格式，包括 `.mp4`、`.mkv`、`.mov`、`.webm`、`.mp3`、`.m4a`、`.flac`、`.aac`、`.ape`、`.wav`、`.ogg` 等
-- **可配置扩展名白名单**：扫描器会读取 `scan.include_ext` 配置，无需改代码即可调整支持格式
-- **HTTPS 支持**：支持 Let's Encrypt 或自定义证书的完整 HTTPS 配置
-
-## 架构
-
-```
-xstrm-suite/
-├── src/                      # 核心运行时代码
-│   ├── config.py             # 配置加载
-│   ├── state.py              # 状态管理
-│   ├── alist_client.py       # AList API 客户端
-│   ├── scanner.py            # 媒体扫描逻辑
-│   └── generator.py          # STRM 文件生成
-├── cmd/                      # CLI 命令行入口
-├── scripts/                  # 安装和运维脚本
-├── config/                   # 配置模板
-├── nginx/                    # Nginx 配置
-├── web/admin/                # 管理后台网页
-└── data/                    # 运行时数据（状态、日志）
+```text
+AList/OpenList 目录 → xstrm → 本地 STRM 和可选外挂字幕 → Emby
+VidHub / Emby 客户端 → Nginx 网关 → 播放后端 → OpenList → 网盘 CDN
 ```
 
-## 环境要求
+STRM 保留原逻辑网盘路径，播放时再由后端取链。识别修复通过 Emby API 更新元数据并保存绑定，不改网盘视频名称，不重写 STRM。
 
-- **Python 3.8+**
-- **PyYAML**
-- **Docker & Docker Compose**
-- **AList v3+**（外部或自托管）
-- **Emby Server**（用于媒体播放）
+## 页面功能
 
-## 安装
+| 页面 | 用途 |
+| --- | --- |
+| 概览 | 扫描状态、队列概况、最近日志 |
+| 扫描任务 | 扫描媒体源或指定目录、浏览网盘、显式重建本地 STRM |
+| 定时任务 | 每源间隔、每日或 Cron 计划，启停、立即运行、有限重试和历史 |
+| 媒体识别 | 筛选未识别或信息不完整的电影 STRM，查看候选并确认 |
+| 媒体源 | 保存远程目录和输出前缀 |
+| 设置 | 连接、密钥、字幕同步、播放后端 |
 
-### 快速开始
+保存媒体源不会触发扫描。保存播放设置不会自动重载网关，需要核对后用部署脚本应用。
+
+## 扫描方式与限制
+
+- **全部文件**：遍历所选目录树，生成缺失 STRM，跳过已有文件。首次导入已有网盘媒体库时使用。
+- **最近新增或修改**：仍遍历目录树，只生成时间窗口内的媒体和字幕。结果为 0 表示范围内没有符合条件的项目，不代表目录没有电影。
+- **队列式增量刷新**：保留的独立 CLI 工作流，按本地索引和请求预算调度候选目录。
+- **字幕同步**：开启后下载受支持的外挂字幕到对应 STRM 目录。
+
+请求间隔和写入串行化有助于减少压力，但不能保证避免网盘限流或风控。最近扫描仍读取旧目录，当前会刷新列表，大媒体库应合理安排频率。
+
+## 环境要求与安装
+
+需要 Linux、Bash、flock（util-linux）、OpenSSL、**Python 3.10+** 和 [requirements.txt](requirements.txt) 中的依赖。管理镜像使用 Python 3.13。容器部署需要 Docker Engine 与 Compose v2。管理服务和 Emby 必须以配置中的同一路径读取共享 STRM 目录。
+
+推荐先按[独立 Docker 部署说明](deploy/README.md)准备管理、网关、Emby、OpenList 容器，再按需启用固定版本的 MediaWarp：
 
 ```bash
-# 克隆仓库
 git clone https://github.com/hrd201/xstrm-suite.git
 cd xstrm-suite
-
-# 运行一键安装 (推荐路径: /opt/xstrm-suite/)
-cd scripts
-sudo ./install.sh
+docker compose -f deploy/compose.test.yaml build admin
+# 接着按 deploy/README.md 准备目录、设置独立密码并初始化网盘。
 ```
 
-安装脚本会交互式提示以下内容：
-- Emby 服务器地址和 API Key
-- AList 安装方式（Docker/本机/自定义）
-- AList 协议、主机、端口、Token 和公网地址
-- Nginx 端口和 HTTPS 配置
-- 媒体挂载根路径
-- STRM 输出目录
-- 扫描源列表
+端口默认绑定 127.0.0.1。局域网访问设置 XSTRM_BIND_IP；外部 TLS 访问前先配置证书及 XSTRM_HTTPS_BIND_IP。实际连接、密钥、证书和数据库不进入 Git 或镜像构建上下文。
 
-> **注意**: 强烈建议将项目安装在 `/opt/xstrm-suite/` 目录下，这有助于保持路径统一，方便未来迁移和维护。
-
-### 手动安装
-
-如需手动安装：
-
-#### 1. 安装依赖
+原生安装器维护旧的 Nginx/njs 部署，与独立 Docker 栈分开：
 
 ```bash
-# 安装 Python 依赖
-pip3 install pyyaml
-
-# 安装 Docker（如未安装）
-curl -fsSL https://get.docker.com | sh
-systemctl enable docker
-systemctl start docker
-
-# 安装 Docker Compose
-pip3 install docker-compose
+sudo bash scripts/install.sh
+# scripts/bootstrap.sh 是同一安装器的兼容入口。
 ```
 
-#### 2. 配置 AList
+提前准备 Python 3.10+、venv 支持、rsync、Docker 和系统工具。安装/升级脚本将全部 Python 依赖装入安装目录的 .venv，systemd 和任务脚本使用此环境。单独安装 API 服务前必须先运行主安装器创建 xstrm 用户。使用网关前设置独立 Basic Auth 密码，仓库不提供可用的通用密码。
 
-确保 AList 服务器正常运行，并准备好：
-- AList 基础 URL（如 `http://YOUR_ALIST_HOST:5388`）
-- Admin Token
+## 首次使用顺序
 
-#### 3. 创建配置
+1. 初始化 Emby、OpenList 并授权网盘，在设置页保存连接。签名下载需要 OpenList 长期令牌，不能用临时登录 JWT 替代。
+2. 保存一个小范围媒体源。逻辑 STRM 内容必须对应实际 OpenList 路径，使用相同的 scan_path 和 output_prefix 最容易核对。
+3. 执行“全部文件”，将共享输出目录加入 Emby 电影或剧集库，启用相应元数据和图片提供器。
+4. 应用后端，VidHub 连接网关地址，验证 302 播放。
+5. 首次扫描确认后再创建计划。调度在管理服务内运行，无需额外的宿主机 Cron。
+6. 在“媒体识别”点击“搜索影片及海报”，弹出候选窗口并自动搜索明确片名；年份或 ID 冲突先提示核对。检查片名、年份和海报后确认。
+
+## 识别修复与健康检查
+
+第一版支持配置输出目录内的电影 STRM。已有错误身份的条目可在“全部影片”中纠正。海报在候选弹窗展示，加载失败有重试入口；部分提供器不返回候选简介，界面会标记“暂无简介”。
+
+确认后提交 Emby，回读 ID、标题、简介和海报。提交超时或图片替换未核对完成时不会误报完全成功。绑定按服务器、原 STRM 路径及内容指纹保存；重建后可复用同路径、同内容的绑定，重新搜索并确认恢复。原路径或内容变化时需要重新关联。
+
+健康扫描检查文件和 HTTP(S) 跳转，不跟随 CDN 链接，不能证明一定能播放、拖动、切字幕或音轨，这些需要在 VidHub 中验收。
+
+## 备份、升级与检查
+
+备份配置、STRM、Emby 数据、data/scheduler.sqlite3、data/identity/ 和扫描状态/索引。识别记录包含原媒体路径和提供器响应，应私下保存；任务终结后会清除执行快照。
+
+Docker 升级前核对活动任务，再重建 admin 镜像并仅重建该服务。播放切换用 deploy/apply_playback.sh mediawarp 或 emby2alist；旧后端回退需要已保存的旧网关和带 njs 的 Nginx。原服务器保留到客户端验收和并行观察期结束。
+
+- [部署说明](deploy/README.md) / [Deployment](deploy/README.en.md)
+- [定时任务](docs/SCHEDULER.md) / [Scheduling](docs/SCHEDULER.en.md)
+- [识别修复](docs/IDENTITY.md) / [Identity repair](docs/IDENTITY.en.md)
+- [更新日志](CHANGELOG.zh-CN.md) / [Changelog](CHANGELOG.md)
 
 ```bash
-# 推荐操作：将项目移动到 /opt/xstrm-suite/
-# sudo mv xstrm-suite /opt/xstrm-suite/
-# cd /opt/xstrm-suite/
-
-# 复制配置模板
-cp config/strm-sync.yaml.example config/strm-sync.yaml
-
-# 编辑配置
-vim config/strm-sync.yaml
+python -m pip install -r requirements.txt
+python -m unittest discover -s tests -v
+for script in scripts/*.sh deploy/*.sh bin/xstrm bin/xstrm-admin; do bash -n "$script"; done
+node --check web/admin/identity.js
 ```
 
-必要配置示例：
+完整进程组和内核锁检查在 Linux 运行。CI 覆盖 Python 3.10、3.13。临时数据测试不能代替客户端验收。
 
-```yaml
-output_root: /emby-strm
-mode: mirror
-alist:
-  base_url: http://YOUR_ALIST_IP:5388
-  token: YOUR_ALIST_TOKEN
-  public_url: https://your-domain.com:5388
-scan:
-  default_depth: 1
-  incremental_only: true
-  include_ext:
-    - .mp4
-    - .mkv
-    - .avi
-    - .ts
-    - .m2ts
-    - .mov
-    - .wmv
-    - .flv
-    - .webm
-    - .m4v
-    - .mp3
-    - .m4a
-    - .flac
-    - .aac
-    - .ape
-    - .wav
-    - .ogg
-    - .opus
-sources:
-  - path: /115/电影
-    library_type: movie
-    watch_depth: 1
-    output_prefix: /115/电影
-    scan_path: /mnt/115/电影
-  - path: /115/剧集
-    library_type: series
-    watch_depth: 1
-    output_prefix: /115/剧集
-    scan_path: /mnt/115/剧集
-```
+## 致谢与许可
 
-#### 4. 渲染并应用配置
-
-```bash
-# 渲染运行时配置
-python3 scripts/render_runtime.py
-
-# 应用配置
-python3 scripts/apply_runtime.py
-```
-
-#### 5. 启动服务
-
-```bash
-# 通过 Docker 启动 nginx 和 emby2alist
-docker-compose up -d
-
-# 启动管理 API
-systemctl enable xstrm-admin-api
-systemctl start xstrm-admin-api
-```
-
-### Docker 安装
-
-运行整个系统最简单的方式：
-
-```bash
-# 使用 docker-compose
-docker-compose up -d
-```
-
-## 使用方法
-
-### 命令行界面
-
-```bash
-# 运行 xstrm CLI
-xstrm
-
-# 或直接运行
-/opt/xstrm-suite/bin/xstrm
-```
-
-选项：
-- `1` - 从已配置的 AList 目录扫描
-- `2` - 扫描指定的 AList 目录
-- `3` - 查看集成配置
-- `4` - 查看当前配置
-- `5` - 查看状态文件
-- `0` - 退出
-
-> 定时扫描功能的触发策略、资源限制、防重入和失败恢复仍需重新设计，当前版本已移除 daemon、systemd 定时器及其安装入口。请通过 CLI 或管理后台手动发起扫描。
-
-### 管理后台
-
-访问管理后台：`http://YOUR_SERVER:8095/admin/xstrm/`
-
-功能：
-- 查看扫描状态和日志
-- 浏览 AList 目录
-- 触发指定目录扫描
-- 查看配置
-
-### API 接口
-
-| 接口 | 方法 | 说明 |
-|------|------|------|
-| `/api/admin/xstrm/status` | GET | 获取扫描状态 |
-| `/api/admin/xstrm/sources` | GET | 列出配置的来源 |
-| `/api/admin/xstrm/scan-path` | POST | 扫描指定路径 |
-| `/api/admin/xstrm/scan-all` | POST | 扫描所有来源 |
-| `/api/admin/xstrm/alist/list` | GET | 浏览 AList 目录 |
-| `/api/admin/xstrm/logs` | GET | 获取扫描日志 |
-
-## 扫描工作流程
-
-### 工作原理
-
-1. **配置**：在 `config/strm-sync.yaml` 中定义媒体来源
-2. **AList 扫描**：扫描器连接 AList API 并递归遍历目录
-3. **路径映射**：AList 挂载路径（如 `/mnt/115/电影`）映射为逻辑路径（如 `/115/电影`）
-4. **STRM 生成**：对每个找到的媒体文件，在输出目录创建 `.strm` 文件
-5. **状态跟踪**：在状态中跟踪已生成的文件以避免重复
-
-### 路径映射示例
-
-```
-AList 路径:    /mnt/115/电影/角斗士2 Gladiator II/GladiatorII.mkv
-               ↓ (路径映射)
-逻辑路径:      /115/电影/角斗士2 Gladiator II/GladiatorII.mkv
-               ↓ (STRM 生成)
-STRM 文件:     /emby-strm/115/电影/角斗士2 Gladiator II/GladiatorII.strm
-               ↓ (内容)
-STRM 内容:     /115/电影/角斗士2 Gladiator II/GladiatorII.mkv
-```
-
-## 队列式增量刷新
-
-日常更新可以使用 `scripts/incremental_strm_refresh.py`。它只轮询监控根目录、近期活跃目录和少量冷目录；普通定时任务仅深入新建或元数据变化的子目录，手工加入的剧集父目录仍会递归扫描季目录。
-
-适用场景：
-
-- 新剧集加入到原有剧集目录中；
-- 新置顶目录需要优先处理；
-- Emby 删除了本地 `.strm`，但远程媒体仍然存在，需要自动补生成；
-- 希望限制 AList 请求量，并通过间隔和随机抖动降低网盘风控风险。
-
-快速使用：
-
-```bash
-cp config/strm-sync.yaml.example config/strm-sync.yaml
-vim config/strm-sync.yaml
-python3 scripts/incremental_strm_refresh.py --config config/strm-sync.yaml run-once
-```
-
-手动加入一个高优先级目录：
-
-```bash
-python3 scripts/incremental_strm_refresh.py \
-  --config config/strm-sync.yaml \
-  queue-dir "/mnt/cloud/series/Example Show" \
-  --reason manual
-```
-
-更多配置、路径映射和 systemd 定时器示例见 [Incremental STRM Refresh](./docs/INCREMENTAL_STRM_REFRESH.md)。
-
-如果要永久删除 Emby 中不需要的影片版本，请先使用 `ignore-path`。被忽略的路径不会再次补生成；`unignore-path` 会取消忽略并安排父目录复查。远程删除会单独记录，并可配置为保留、隔离或在宽限期后删除。
-
-### 支持的媒体扩展名
-
-默认情况下，扫描器支持一组较完整的常见视频与音频扩展名。
-你也可以通过 `config/strm-sync.yaml` 中的 `scan.include_ext` 自定义支持列表。
-
-常见支持格式包括：
-- 视频：`.mp4`、`.mkv`、`.avi`、`.ts`、`.m2ts`、`.mov`、`.wmv`、`.flv`、`.webm`、`.m4v`、`.mpg`、`.mpeg`、`.rmvb`、`.iso`
-- 音频：`.mp3`、`.m4a`、`.flac`、`.aac`、`.ape`、`.wav`、`.ogg`、`.opus`、`.wma`、`.alac`、`.aiff`、`.aif`、`.amr`
-
-### 增量模式
-
-默认启用增量模式：
-- 跳过已存在的 STRM 文件
-- 仅新媒体文件触发 STRM 生成
-- 自动重新生成缺失的 STRM 文件
-
-禁用增量模式：
-
-```yaml
-scan:
-  incremental_only: false
-```
-
-## 故障排查
-
-### 检查服务状态
-
-```bash
-# 检查 xstrm-admin API
-systemctl status xstrm-admin-api
-
-# 检查 Docker 容器
-docker-compose ps
-
-# 检查 nginx
-nginx -t
-```
-
-### 查看日志
-
-```bash
-# 管理 API 日志
-journalctl -u xstrm-admin-api -f
-
-# 扫描日志
-tail -f /opt/xstrm-suite/data/tasks/logs/scan_path-*.log
-```
-
-### 常见问题
-
-1. **Token 无效**：在 `config/strm-sync.yaml` 中更新您的 AList token
-2. **路径未找到**：确保 AList 存储路径与配置匹配
-3. **权限拒绝**：确保输出目录可写
-
-## 开发
-
-### 项目结构
-
-```
-src/
-├── config.py       # 配置加载和推断
-├── state.py        # 状态文件管理
-├── alist_client.py # AList API 客户端
-├── scanner.py      # 媒体扫描逻辑
-└── generator.py   # STRM 文件生成
-```
-
-### 运行测试
-
-```bash
-# 测试扫描
-python3 -m cmd.cli --scan-path "/mnt/115/电影"
-
-# 查看配置
-python3 -m cmd.cli --config
-```
-
-## 更新日志
-
-详细更新日志请参阅 [CHANGELOG.md](CHANGELOG.md)
-
-## 致谢
-
-本项目基于 [bpking1](https://github.com/bpking1) 的 [embyExternalUrl](https://github.com/bpking1/embyExternalUrl) 项目 [emby2alist 分支](https://github.com/bpking1/embyExternalUrl/tree/emby2alist) 增改而诞生。
-
-## 许可证
-
-MIT License
-
-## 支持
-
-如有问题，请在 GitHub 上提交 Issue。
+播放集成基于 [embyExternalUrl](https://github.com/bpking1/embyExternalUrl)。调度参考 [AutoFilm](https://github.com/AkimioJR/AutoFilm)，[MediaWarp](https://github.com/AkimioJR/MediaWarp) 是可选独立后端。参见 [LICENSE](LICENSE) 与各上游许可。

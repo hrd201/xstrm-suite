@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import json
+import os
+import signal
 import subprocess
 import sys
 import traceback
@@ -9,12 +11,19 @@ from urllib import request as urlrequest, error as urlerror
 from urllib.parse import parse_qs, urlparse
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BASE_DIR))
+from src import control, schedules
+from src.scheduler import Scheduler, stamp
+from src.identity import IdentityService, IdentityError
+
 SCRIPTS_DIR = BASE_DIR / 'scripts'
 WEB_DIR = BASE_DIR / 'web' / 'admin'
 CONFIG_PATH = BASE_DIR / 'config' / 'strm-sync.yaml'
 HTPASSWD_PATH = BASE_DIR / 'nginx' / 'conf.d' / '.htpasswd-xstrm-admin'
-HOST = '127.0.0.1'
-PORT = 18095
+HOST = os.environ.get('XSTRM_ADMIN_HOST', '127.0.0.1')
+PORT = int(os.environ.get('XSTRM_ADMIN_PORT', '18095'))
+SCHEDULER = None
+IDENTITY = None
 
 TASKS = {
     'scan': ['bash', str(SCRIPTS_DIR / 'task_incremental_refresh.sh')],
@@ -54,48 +63,42 @@ def run_cmd(cmd: list[str]) -> tuple[int, str, str]:
     return proc.returncode, proc.stdout, proc.stderr
 
 
-def start_cmd(cmd: list[str]) -> int:
-    proc = subprocess.Popen(
-        cmd,
-        cwd=BASE_DIR,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-    return proc.pid
+def start_cmd(cmd: list[str]) -> str:
+    if SCHEDULER is None:
+        raise RuntimeError('调度服务尚未启动')
+    return SCHEDULER.submit_manual(cmd, control.read(CONFIG_PATH)[0])
 
 
 def update_basic_auth_password(new_password: str) -> tuple[bool, str]:
     new_password = (new_password or '').strip()
     if len(new_password) < 8:
         return False, '新密码至少 8 位'
-    salt_proc = subprocess.run(['openssl', 'passwd', '-apr1', new_password], capture_output=True, text=True)
+    salt_proc = subprocess.run(['openssl', 'passwd', '-apr1', '-stdin'], input=new_password + '\n', capture_output=True, text=True)
     if salt_proc.returncode != 0:
         return False, (salt_proc.stderr or salt_proc.stdout or '生成密码哈希失败').strip()
     HTPASSWD_PATH.parent.mkdir(parents=True, exist_ok=True)
-    HTPASSWD_PATH.write_text(f"admin:{salt_proc.stdout.strip()}\n", encoding='utf-8')
-    HTPASSWD_PATH.chmod(0o600)
-    reload_proc = subprocess.run(['docker', 'exec', 'xstrm-nginx', 'nginx', '-s', 'reload'], capture_output=True, text=True)
-    if reload_proc.returncode != 0:
-        return False, (reload_proc.stderr or reload_proc.stdout or 'nginx reload 失败').strip()
+    temporary = HTPASSWD_PATH.with_suffix('.pending')
+    temporary.write_text(f"admin:{salt_proc.stdout.strip()}\n", encoding='utf-8')
+    # Nginx workers read this salted hash file on each authentication request.
+    temporary.chmod(0o644)
+    temporary.replace(HTPASSWD_PATH)
     return True, '管理密码已更新并生效'
 
 
 def load_sync_config() -> dict:
-    import yaml
-    if not CONFIG_PATH.exists():
-        return {}
-    data = yaml.safe_load(CONFIG_PATH.read_text(encoding='utf-8')) or {}
-    return data if isinstance(data, dict) else {}
+    cfg, revision = control.read(CONFIG_PATH)
+    cfg['_control_revision'] = revision
+    return cfg
 
 
 def save_sync_config(data: dict):
-    import yaml
-    temporary = CONFIG_PATH.with_name(CONFIG_PATH.name + '.tmp')
-    temporary.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding='utf-8')
-    temporary.chmod(0o600)
-    temporary.replace(CONFIG_PATH)
+    data = dict(data)
+    expected = data.pop('_control_revision', None)
+    with control.config_lock(CONFIG_PATH):
+        if expected is not None and control.read(CONFIG_PATH)[1] != expected:
+            raise control.Conflict('配置已改变，请重新读取后保存')
+        control.atomic_write(CONFIG_PATH, data)
+
 
 
 def derive_sources_preview(profile: dict, resolved_mode: str) -> tuple[list[dict], str | None]:
@@ -216,6 +219,36 @@ class Handler(BaseHTTPRequestHandler):
 
     def _handle_get(self, write_body: bool = True):
         parsed = urlparse(self.path)
+        if parsed.path == '/api/admin/xstrm/identity/ui.js':
+            return self._send_bytes(200, (WEB_DIR / 'identity.js').read_bytes(), 'text/javascript; charset=utf-8', write_body=write_body)
+        if parsed.path.startswith('/api/admin/xstrm/identity/'):
+            try:
+                query = parse_qs(parsed.query)
+                action = parsed.path.rsplit('/', 1)[-1]
+                if action == 'items':
+                    result = IDENTITY.listing((query.get('scope') or ['unmatched'])[0])
+                elif action == 'history':
+                    result = IDENTITY.history()
+                elif action == 'operation':
+                    result = {'operation': IDENTITY.operation((query.get('id') or [''])[0])}
+                elif action == 'image':
+                    body, mime = IDENTITY.image((query.get('id') or [''])[0])
+                    return self._send_bytes(200, body, mime, write_body=write_body)
+                else:
+                    return self._json(404, {'ok': False, 'error': '接口不存在'}, write_body=write_body)
+                return self._json(200, {'ok': True, **result}, write_body=write_body)
+            except IdentityError as exc:
+                return self._json(exc.status, {'ok': False, 'error': str(exc)}, write_body=write_body)
+            except Exception:
+                traceback.print_exc()
+                return self._json(500, {'ok': False, 'error': '媒体识别服务异常，请检查服务日志'}, write_body=write_body)
+        if parsed.path == '/api/admin/xstrm/scheduler':
+            return self._json(200, {'ok': True, **SCHEDULER.status()}, write_body=write_body)
+        if parsed.path == '/api/admin/xstrm/task-run':
+            run_id = (parse_qs(parsed.query).get('id') or [''])[0]
+            with SCHEDULER.db() as db:
+                run = db.execute('SELECT * FROM runs WHERE id=?', (run_id,)).fetchone()
+            return self._json(200 if run else 404, {'ok': bool(run), 'run': SCHEDULER.public_run(run) if run else None}, write_body=write_body)
         if parsed.path in ('/admin/xstrm', '/admin/xstrm/'):
             index = WEB_DIR / 'index.html'
             if not index.exists():
@@ -233,6 +266,13 @@ class Handler(BaseHTTPRequestHandler):
                     payload = json.loads(out)
                 except Exception:
                     payload = {'raw': out}
+                if SCHEDULER and payload.get('run_id'):
+                    with SCHEDULER.db() as db:
+                        run = db.execute('SELECT * FROM runs WHERE id=?', (payload['run_id'],)).fetchone()
+                    if run:
+                        active = run['state'] in ('queued', 'running', 'retry_wait')
+                        payload.update(running=active, success=None if active else run['state'] in ('succeeded', 'warning'),
+                                       message=run['message'], queue_state=run['state'], finished_at=stamp(run['finished']))
                 return self._json(200, {'ok': True, 'status': payload}, write_body=write_body)
             return self._json(500, {'ok': False, 'error': err or out}, write_body=write_body)
         if parsed.path == '/api/admin/xstrm/incremental/status':
@@ -259,7 +299,12 @@ class Handler(BaseHTTPRequestHandler):
             code, out, err = run_cmd([sys.executable, str(SCRIPTS_DIR / 'strm_health_check.py')])
             if code == 0:
                 return self._json(200, {'ok': True, 'report': json.loads(out)}, write_body=write_body)
-            return self._json(500, {'ok': False, 'error': err or out or 'strm health check failed'}, write_body=write_body)
+            message = err or out or 'strm health check failed'
+            try:
+                message = json.loads(message).get('error') or message
+            except (ValueError, AttributeError):
+                pass
+            return self._json(500, {'ok': False, 'error': message}, write_body=write_body)
         if parsed.path == '/api/admin/xstrm/sources':
             cfg = load_sync_config()
             return self._json(200, {'ok': True, 'sources': cfg.get('sources', [])}, write_body=write_body)
@@ -271,11 +316,13 @@ class Handler(BaseHTTPRequestHandler):
             if ok:
                 return self._json(200, {'ok': True, 'refreshed': refresh, **payload}, write_body=write_body)
             return self._json(500, {'ok': False, 'error': payload, 'path': path}, write_body=write_body)
+        if parsed.path == '/api/admin/xstrm/control':
+            return self._json(200, {'ok': True, 'config': control.public(*control.read(CONFIG_PATH))}, write_body=write_body)
         if parsed.path == '/api/admin/xstrm/settings':
             cfg = load_sync_config()
             selected_mode = cfg.get('strm_mode', 'auto')
             ok, profile = load_nginx_profile(cfg.get('emby2alist', {}).get('profile_root'))
-            resolved_mode = profile.get('preferredStrmMode', 'logical_path') if ok and selected_mode == 'auto' else selected_mode
+            resolved_mode = 'logical_path'
             derived_sources, expected_example = derive_sources_preview(profile if ok else {}, resolved_mode)
             return self._json(200, {
                 'ok': True,
@@ -288,7 +335,7 @@ class Handler(BaseHTTPRequestHandler):
                     'derived_sources': derived_sources,
                     'expected_target_example': expected_example,
                 },
-                'profile': profile if ok else None,
+                'profile': {k: v for k, v in profile.items() if k != 'alistToken'} if ok else None,
                 'profile_error': None if ok else profile,
             }, write_body=write_body)
         return self._json(404, {'ok': False, 'error': 'not found'}, write_body=write_body)
@@ -314,22 +361,68 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 data = {k: v[0] for k, v in parse_qs(raw).items()}
 
+        if parsed.path in ('/api/admin/xstrm/identity/search', '/api/admin/xstrm/identity/apply'):
+            if not isinstance(data, dict):
+                return self._json(400, {'ok': False, 'error': '请求必须是对象'})
+            try:
+                applying = parsed.path.endswith('/apply')
+                result = IDENTITY.apply(data) if applying else IDENTITY.search(data)
+                return self._json(202 if applying else 200, {'ok': True, **result})
+            except IdentityError as exc:
+                return self._json(exc.status, {'ok': False, 'error': str(exc)})
+
+        if parsed.path == '/api/admin/xstrm/control/test':
+            return self._json(200, {'ok': True, 'connections': control.test_connections(control.read(CONFIG_PATH)[0])})
+
+        if parsed.path in ('/api/admin/xstrm/scheduler/save', '/api/admin/xstrm/scheduler/delete', '/api/admin/xstrm/scheduler/run'):
+            try:
+                if not isinstance(data, dict):
+                    raise ValueError('任务请求必须是对象')
+                if parsed.path.endswith('/run'):
+                    run_id = SCHEDULER.submit_job(data.get('id'))
+                    return self._json(202, {'ok': True, 'run_id': run_id, 'message': '任务已加入队列'})
+                revision = schedules.save(CONFIG_PATH, data.get('revision'), data.get('job'), data.get('id') if parsed.path.endswith('/delete') else None)
+                SCHEDULER.sync()
+                SCHEDULER.wake.set()
+                return self._json(200, {'ok': True, 'revision': revision, 'message': '定时任务配置已生效'})
+            except control.Conflict:
+                raise
+            except ValueError as exc:
+                return self._json(400, {'ok': False, 'error': str(exc)})
+
+        if parsed.path in ('/api/admin/xstrm/control', '/api/admin/xstrm/control/preview'):
+            try:
+                if not isinstance(data, dict):
+                    raise ValueError('请求必须是对象')
+                if parsed.path.endswith('/preview'):
+                    cfg, revision = control.read(CONFIG_PATH)
+                    if data.get('revision') != revision:
+                        raise control.Conflict('配置已改变，请重新读取')
+                    result = control.render_playback(control.updated(cfg, data))
+                    return self._json(200, {'ok': True, 'preview': result, 'applied': False})
+                result = control.save(CONFIG_PATH, data)
+                return self._json(200, {'ok': True, 'config': result, 'message': '配置已保存；同步任务下次启动使用，播放配置待部署应用'})
+            except control.Conflict as exc:
+                return self._json(409, {'ok': False, 'error': str(exc)})
+            except ValueError as exc:
+                return self._json(400, {'ok': False, 'error': str(exc)})
+
         if parsed.path == '/api/admin/xstrm/scan':
             mode = (data.get('mode') or 'new').strip().lower()
             try:
                 task, message = scan_task_for_mode(mode)
             except ValueError as exc:
                 return self._json(400, {'ok': False, 'error': str(exc)})
-            pid = start_cmd(task)
-            return self._json(202, {'ok': True, 'pid': pid, 'mode': mode, 'message': message})
+            run_id = start_cmd(task)
+            return self._json(202, {'ok': True, 'run_id': run_id, 'mode': mode, 'message': message})
 
         if parsed.path == '/api/admin/xstrm/scan-full':
-            pid = start_cmd(TASKS['scan_full'])
-            return self._json(202, {'ok': True, 'pid': pid, 'message': '完整校验任务已提交'})
+            run_id = start_cmd(TASKS['scan_full'])
+            return self._json(202, {'ok': True, 'run_id': run_id, 'message': '完整校验任务已提交'})
 
         if parsed.path == '/api/admin/xstrm/rebuild':
-            pid = start_cmd(TASKS['rebuild'])
-            return self._json(202, {'ok': True, 'pid': pid, 'message': '全量重建任务已提交'})
+            run_id = start_cmd(TASKS['rebuild'])
+            return self._json(202, {'ok': True, 'run_id': run_id, 'message': '全量重建任务已提交'})
 
         if parsed.path == '/api/admin/xstrm/scan-path':
             target = (data.get('path') or '').strip()
@@ -340,8 +433,8 @@ class Handler(BaseHTTPRequestHandler):
                 task, message = scan_path_task_for_mode(mode, target)
             except ValueError as exc:
                 return self._json(400, {'ok': False, 'error': str(exc)})
-            pid = start_cmd(task)
-            return self._json(202, {'ok': True, 'pid': pid, 'path': target, 'mode': mode, 'message': message})
+            run_id = start_cmd(task)
+            return self._json(202, {'ok': True, 'run_id': run_id, 'path': target, 'mode': mode, 'message': message})
 
         if parsed.path in ('/api/admin/xstrm/ignore', '/api/admin/xstrm/unignore'):
             target = (data.get('path') or '').strip()
@@ -351,7 +444,11 @@ class Handler(BaseHTTPRequestHandler):
             cmd = [sys.executable, str(SCRIPTS_DIR / 'incremental_strm_refresh.py'), '--config', str(CONFIG_PATH), command, target]
             if command == 'ignore-path':
                 cmd.extend(['--reason', 'web_manual'])
-            code, out, err = run_cmd(cmd)
+            lock_file = BASE_DIR / 'data/tasks/xstrm-write.flock'
+            lock_file.parent.mkdir(parents=True, exist_ok=True)
+            code, out, err = run_cmd(['flock', '-n', '-E', '75', str(lock_file), *cmd])
+            if code == 75:
+                return self._json(409, {'ok': False, 'error': '有扫描任务正在写入，请等待完成后再操作'})
             return self._json(200 if code == 0 else 500, {'ok': code == 0, 'message': out.strip(), 'error': err.strip()})
 
         if parsed.path == '/api/admin/xstrm/change-password':
@@ -375,8 +472,8 @@ class Handler(BaseHTTPRequestHandler):
             strm_mode = (data.get('strm_mode') or 'auto').strip()
             profile_root = (data.get('profile_root') or '/opt/xstrm-suite/nginx').strip()
             output_root = (data.get('output_root') or '/emby-strm').strip()
-            if strm_mode not in ('auto', 'logical_path', 'local_path'):
-                return self._json(400, {'ok': False, 'error': 'invalid strm_mode'})
+            if strm_mode not in ('auto', 'logical_path'):
+                return self._json(400, {'ok': False, 'error': '当前生成器仅支持 logical_path'})
             if not profile_root:
                 return self._json(400, {'ok': False, 'error': 'profile_root required'})
             cfg = load_sync_config()
@@ -386,7 +483,7 @@ class Handler(BaseHTTPRequestHandler):
             ok, profile = load_nginx_profile(profile_root)
             if ok:
                 cfg['emby2alist']['media_mount_path'] = profile.get('mediaMountPath', [])
-                cfg['resolved_strm_mode'] = profile.get('preferredStrmMode', 'logical_path') if strm_mode == 'auto' else strm_mode
+                cfg['resolved_strm_mode'] = 'logical_path'
             derived_sources, expected_example = derive_sources_preview(profile if ok else {}, cfg.get('resolved_strm_mode', strm_mode))
             save_sync_config(cfg)
             return self._json(200, {
@@ -401,7 +498,7 @@ class Handler(BaseHTTPRequestHandler):
                     'derived_sources': derived_sources,
                     'expected_target_example': expected_example,
                 },
-                'profile': profile if ok else None,
+                'profile': {k: v for k, v in profile.items() if k != 'alistToken'} if ok else None,
                 'profile_error': None if ok else profile,
             })
 
@@ -410,6 +507,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             return self._handle_post()
+        except control.Conflict as exc:
+            return self._json(409, {'ok': False, 'error': str(exc)})
         except PermissionError:
             traceback.print_exc()
             return self._json(500, {
@@ -423,4 +522,14 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == '__main__':
     print(f'xstrm admin api listening on http://{HOST}:{PORT}')
-    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
+    SCHEDULER = Scheduler(BASE_DIR, CONFIG_PATH)
+    IDENTITY = IdentityService(BASE_DIR, CONFIG_PATH)
+    SCHEDULER.start()
+    def stop_service(*_args):
+        raise SystemExit(0)
+    signal.signal(signal.SIGTERM, stop_service)
+    try:
+        with ThreadingHTTPServer((HOST, PORT), Handler) as server:
+            server.serve_forever()
+    finally:
+        SCHEDULER.stop()

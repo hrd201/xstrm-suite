@@ -6,18 +6,12 @@ BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 source "$BASE_DIR/scripts/task_lib.sh"
 
 TASK_NAME="incremental_refresh"
-LOCK_DIR="$TASK_DIR/xstrm-write.lock"
 LOG_FILE="$(task_log_path "$TASK_NAME")"
 STARTED_AT="$(now_iso)"
 CONFIG_FILE="${XSTRM_INCREMENTAL_CONFIG:-$BASE_DIR/config/strm-sync.yaml}"
 TARGET_PATH="${1:-}"
 
-if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  summary="任务正在执行中"
-  emit_result "TASK_RUNNING" "$TASK_NAME" "$LOG_FILE" "$summary"
-  exit 2
-fi
-trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
+task_lock
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
   summary="缺少配置文件: $CONFIG_FILE"

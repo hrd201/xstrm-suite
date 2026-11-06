@@ -1,0 +1,53 @@
+name: xstrm-test
+services:
+  admin:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.admin
+    environment:
+      XSTRM_PLAYBACK_URL: http://gateway:8091
+    restart: unless-stopped
+    volumes:
+      - ./test-config:/opt/xstrm-suite/config
+      - ./test-data:/opt/xstrm-suite/data
+      - ./test-media:/emby-strm
+      - ./test-nginx:/opt/xstrm-suite/nginx
+  gateway:
+    image: nginx:stable
+    entrypoint: ["/bin/sh", "-c", "mkdir -p /var/cache/nginx/emby/images /var/cache/nginx/emby/subtitles && exec nginx -g 'daemon off;'"]
+    restart: unless-stopped
+    ports:
+      - "${XSTRM_BIND_IP:-127.0.0.1}:18091:8091"
+      - "${XSTRM_HTTPS_BIND_IP:-127.0.0.1}:18443:18443"
+    volumes:
+      - ./test-nginx:/etc/nginx:ro
+    depends_on:
+      - admin
+      - emby
+      - openlist
+  emby:
+    image: emby/embyserver:latest
+    dns:
+      - ${XSTRM_DNS_SERVER:-1.1.1.1}
+    restart: unless-stopped
+    ports:
+      - "${XSTRM_BIND_IP:-127.0.0.1}:18096:8096"
+    volumes:
+      - ./test-emby:/config
+      - ./test-media:/emby-strm
+  openlist:
+    image: openlistteam/openlist:latest
+    restart: unless-stopped
+    ports:
+      - "${XSTRM_BIND_IP:-127.0.0.1}:15244:5244"
+    volumes:
+      - ./test-openlist:/opt/openlist/data
+  mediawarp:
+    image: akimio/mediawarp:v0.2.5
+    profiles: [mediawarp]
+    restart: unless-stopped
+    dns:
+      - ${XSTRM_DNS_SERVER:-1.1.1.1}
+    volumes:
+      - ./test-mediawarp/config:/config:ro
+    # Only the authenticated HTTPS gateway can expose this service to clients.
