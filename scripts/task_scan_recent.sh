@@ -6,7 +6,6 @@ BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 source "$BASE_DIR/scripts/task_lib.sh"
 
 TASK_NAME="scan_recent"
-LOCK_DIR="$TASK_DIR/xstrm-write.lock"
 LOG_FILE="$(task_log_path "$TASK_NAME")"
 STARTED_AT="$(now_iso)"
 RECENT_HOURS="${1:-24}"
@@ -17,12 +16,7 @@ if ! [[ "$RECENT_HOURS" =~ ^[0-9]+([.][0-9]+)?$ ]] || [[ "$RECENT_HOURS" == "0" 
   exit 2
 fi
 
-if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  summary="任务正在执行中"
-  emit_result "TASK_RUNNING" "$TASK_NAME" "$LOG_FILE" "$summary"
-  exit 2
-fi
-trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
+task_lock
 
 if [[ -n "$TARGET_PATH" ]]; then
   RUN_COMMAND=(--scan-path "$TARGET_PATH")

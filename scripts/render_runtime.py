@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 import json
+import sys
 from pathlib import Path
 
 import yaml
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BASE_DIR))
+from src import control
+
 RUNTIME_PATH = BASE_DIR / 'config' / 'runtime.yaml'
 TEMPLATE_DIR = BASE_DIR / 'config' / 'templates'
 OUT_NGINX_DIR = BASE_DIR / 'nginx'
@@ -29,7 +33,7 @@ def yaml_list(values, indent=4):
 def render_template(path: Path, mapping: dict):
     text = path.read_text(encoding='utf-8')
     for key, value in mapping.items():
-        text = text.replace('{{ ' + key + ' }}', str(value))
+        text = text.replace('{{ ' + key + ' }}', json.dumps(value, ensure_ascii=False)[1:-1] if path.suffix == '.template' and path.name.startswith('constant') and isinstance(value, str) and key not in ('mount.media_mount_path_quoted', 'alist.sign_enable_js') else str(value))
     return text
 
 
@@ -78,6 +82,17 @@ def build_mapping(cfg: dict):
 
 def main():
     cfg = load_yaml(RUNTIME_PATH)
+    # Existing Web configuration takes precedence over bootstrap defaults.
+    saved, _revision = control.read(OUT_STRM_SYNC)
+    if saved.get('alist', {}).get('base_url'):
+        from urllib.parse import urlsplit
+        address = urlsplit(saved['alist']['base_url'])
+        cfg['alist'].update(scheme=address.scheme, host=address.hostname, port=address.port or (443 if address.scheme == 'https' else 80))
+        cfg['alist']['token'] = saved['alist'].get('token', cfg['alist'].get('token', ''))
+        cfg['alist']['public_addr'] = saved['alist'].get('public_url', cfg['alist'].get('public_addr', ''))
+    if saved.get('emby'):
+        cfg['emby'].update(saved['emby'])
+    cfg['xstrm']['output_root'] = saved.get('output_root', cfg['xstrm']['output_root'])
     mapping = build_mapping(cfg)
 
     (OUT_NGINX_DIR / 'conf.d').mkdir(parents=True, exist_ok=True)
@@ -93,8 +108,13 @@ def main():
 
     (OUT_NGINX_DIR / 'conf.d' / 'constant.js.runtime').write_text(constant_js, encoding='utf-8')
     (OUT_NGINX_DIR / 'conf.d' / 'config' / 'constant-mount.runtime.js').write_text(constant_mount, encoding='utf-8')
-    OUT_STRM_SYNC.write_text(strm_sync, encoding='utf-8')
-    OUT_STRM_SYNC.chmod(0o600)
+    # Bootstrap only: never regenerate over task, queue or Web settings.
+    if not OUT_STRM_SYNC.exists():
+        OUT_STRM_SYNC.write_text(strm_sync, encoding='utf-8')
+        OUT_STRM_SYNC.chmod(0o600)
+    if saved.get('emby', {}).get('host') and saved.get('alist', {}).get('base_url'):
+        constant_mount = control.render_playback(saved, redact=False)['constant-mount.js']
+        (OUT_NGINX_DIR / 'conf.d' / 'config' / 'constant-mount.runtime.js').write_text(constant_mount, encoding='utf-8')
     (OUT_NGINX_DIR / 'nginx.runtime.conf').write_text(nginx_patch, encoding='utf-8')
     OUT_SITES_DIR.mkdir(parents=True, exist_ok=True)
     for stale in ('xstrm-http.conf', 'xstrm-https.conf'):

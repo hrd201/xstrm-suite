@@ -1,5 +1,26 @@
 # CHANGELOG
 
+## Unreleased — Web control plane review (2026-11-06)
+
+### Added
+- Unified settings, durable per-source schedules, serialized scans and readable STRM health reports.
+- Validated MediaWarp switching/rollback with private configuration and playback client authentication.
+- Human-confirmed Emby movie identification, persisted bindings and restart-safe verification.
+- English/Chinese deployment, scheduling and identification guides.
+
+### Fixed
+- Candidate dialog opens immediately, poster failures show retry, and counts follow filtering.
+- Precise TMDB lookup ignores title/year hints; parsing preserves English articles and detects ID conflicts.
+- Existing metadata cannot conceal a submission timeout; requested image replacement requires change evidence.
+- Native install/upgrade uses a venv with complete requirements; bootstrap shares the main installer.
+- Enforce LF in exported text scripts, including extensionless bin launchers, so Windows-built archives run on Linux.
+- Configurable loopback-default lab bindings, explicit recent-scan result scope and valid logical-path examples.
+
+### Security and documentation
+- Remove the tracked admin-password hash and private deployment-domain references. Require a unique password.
+- Correct Python requirements and rate-limit claims; document actual playback-validation boundaries.
+- CI covers Python 3.10/3.13, every shell script and identity JavaScript syntax.
+
 All notable changes to this project will be documented in this file.
 
 ## [0.3.0] - 2026-07-11

@@ -2,10 +2,21 @@
 set -euo pipefail
 
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ -x "$BASE_DIR/.venv/bin/python3" ]]; then export PATH="$BASE_DIR/.venv/bin:$PATH"; fi
 TASK_DIR="$BASE_DIR/data/tasks"
 LOG_DIR="$TASK_DIR/logs"
 STATUS_FILE="$TASK_DIR/status.json"
 mkdir -p "$LOG_DIR"
+
+# Kernel-owned lock survives neither process exit nor container restart. Child
+# scanners inherit FD 9, so a killed parent cannot allow overlapping writers.
+task_lock() {
+  exec 9>"$TASK_DIR/xstrm-write.flock"
+  if ! flock -n 9; then
+    emit_result "TASK_RUNNING" "$TASK_NAME" "$LOG_FILE" "有写入任务正在执行"
+    exit 2
+  fi
+}
 
 now_iso() {
   date -Iseconds
@@ -28,7 +39,7 @@ status_write() {
   local log_file="$5"
   local started_at="$6"
   local finished_at="$7"
-  python3 - "$STATUS_FILE" "$task_name" "$running" "$success" "$message" "$log_file" "$started_at" "$finished_at" <<'PY'
+  python3 - "$STATUS_FILE" "$task_name" "$running" "$success" "$message" "$log_file" "$started_at" "$finished_at" "${XSTRM_RUN_ID:-}" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -52,8 +63,11 @@ data = {
   "log_file": sys.argv[6],
   "started_at": sys.argv[7],
   "finished_at": sys.argv[8],
+  "run_id": sys.argv[9],
 }
-path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+temporary = path.with_suffix('.tmp')
+temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+temporary.replace(path)
 PY
 }
 

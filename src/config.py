@@ -1,11 +1,12 @@
 """Configuration loading and inference."""
 import json
+import os
 import re
 from pathlib import Path
 from typing import Optional
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-CONFIG_PATH = BASE_DIR / 'config' / 'strm-sync.yaml'
+CONFIG_PATH = Path(os.environ.get('XSTRM_CONFIG_PATH', BASE_DIR / 'config' / 'strm-sync.yaml'))
 EMBY2ALIST_CONSTANT = BASE_DIR / 'emby2alist' / 'conf.d' / 'constant.js'
 EMBY2ALIST_MOUNT_CONFIG = BASE_DIR / 'emby2alist' / 'conf.d' / 'config' / 'constant-mount.js'
 DEFAULT_NGINX_PROFILE_ROOT = BASE_DIR / 'emby2alist'

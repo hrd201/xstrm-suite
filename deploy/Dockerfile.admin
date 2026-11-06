@@ -1,0 +1,9 @@
+FROM python:3.13-slim
+WORKDIR /opt/xstrm-suite
+COPY requirements.txt .
+COPY deploy/wheels /wheels
+ARG PIP_NO_INDEX=0
+RUN pip install --no-cache-dir --find-links=/wheels -r requirements.txt
+COPY . .
+ENV XSTRM_ADMIN_HOST=0.0.0.0
+CMD ["python", "scripts/admin_api.py"]

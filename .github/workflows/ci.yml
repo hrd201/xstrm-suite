@@ -7,19 +7,24 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.13']
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
       - run: pip install -r requirements.txt
-      - run: python -m compileall -q cmd src scripts tests
+      - run: python -m compileall -q cmd src scripts tests deploy
       - run: python -m unittest discover -s tests -v
-      - run: bash -n scripts/*.sh bin/xstrm bin/xstrm-admin
+      - run: for script in scripts/*.sh deploy/*.sh bin/xstrm bin/xstrm-admin; do bash -n "$script"; done
+      - run: node --check web/admin/identity.js
       - name: Reject committed runtime secrets
         run: |
           test ! -e config/runtime.yaml
           test ! -e config/strm-sync.yaml
+          test ! -e nginx/conf.d/.htpasswd-xstrm-admin
           ! git grep -nE 'alist-[A-Za-z0-9_-]{30,}|201pc\.win|tmdai\.org'

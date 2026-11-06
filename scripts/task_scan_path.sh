@@ -13,16 +13,10 @@ source "$BASE_DIR/scripts/task_lib.sh"
 
 TASK_NAME="scan_path"
 SAFE_NAME=$(printf '%s' "$TARGET_PATH" | tr '/ :' '___' | cut -c1-80)
-LOCK_DIR="$TASK_DIR/xstrm-write.lock"
 LOG_FILE="$(task_log_path "$TASK_NAME")"
 STARTED_AT="$(now_iso)"
 
-if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  summary="同目录任务正在执行中"
-  emit_result "TASK_RUNNING" "$TASK_NAME" "$LOG_FILE" "$summary"
-  exit 2
-fi
-trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
+task_lock
 
 status_write "$TASK_NAME" true null "正在扫描指定目录: $TARGET_PATH" "$LOG_FILE" "$STARTED_AT" ""
 

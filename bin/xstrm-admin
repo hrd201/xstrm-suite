@@ -2,6 +2,7 @@
 set -euo pipefail
 
 BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ -x "$BASE_DIR/.venv/bin/python3" ]]; then export PATH="$BASE_DIR/.venv/bin:$PATH"; fi
 
 show_menu() {
   cat <<'EOF'

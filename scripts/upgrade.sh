@@ -15,6 +15,7 @@ tar -czf "$backup_file" -C "$INSTALL_ROOT" \
 if command -v rsync >/dev/null 2>&1; then
   rsync -a --delete \
     --exclude '.git' \
+    --exclude '.venv/' \
     --exclude '__pycache__' \
     --exclude 'data/' \
     --exclude 'config/runtime.yaml' \
@@ -26,12 +27,14 @@ if command -v rsync >/dev/null 2>&1; then
     "$BASE_DIR/" "$INSTALL_ROOT/"
 else
   tar -C "$BASE_DIR" -cf - \
-    --exclude='.git' --exclude='__pycache__' --exclude='data' \
+    --exclude='.git' --exclude='.venv' --exclude='__pycache__' --exclude='data' \
     --exclude='config/runtime.yaml' --exclude='config/strm-sync.yaml' \
     --exclude='config/incremental-strm.json' --exclude='config/cert' \
     --exclude='nginx/conf.d/.htpasswd-xstrm-admin' --exclude='*.runtime.*' . \
     | tar -C "$INSTALL_ROOT" -xf -
 fi
+bash "$INSTALL_ROOT/scripts/install_python_requirements.sh" "$INSTALL_ROOT"
+export PATH="$INSTALL_ROOT/.venv/bin:$PATH"
 chmod +x "$INSTALL_ROOT/bin/xstrm" "$INSTALL_ROOT/bin/xstrm-admin" "$INSTALL_ROOT/scripts/"*.sh "$INSTALL_ROOT/scripts/strm_x.py" "$INSTALL_ROOT/scripts/admin_api.py"
 ln -sf "$INSTALL_ROOT/bin/xstrm" /usr/local/bin/xstrm
 ln -sf "$INSTALL_ROOT/bin/xstrm-admin" /usr/local/bin/xstrm-admin

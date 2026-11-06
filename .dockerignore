@@ -1,0 +1,16 @@
+.git
+.venv
+**/__pycache__
+**/*.pyc
+config/runtime.yaml
+config/strm-sync.yaml
+config/incremental-strm.json
+config/cert
+config/*.previous
+config/*.tmp
+config/*.lock
+data/*
+deploy/test-*
+nginx/conf.d/.htpasswd-xstrm-admin
+cert-manager
+acme-tool
